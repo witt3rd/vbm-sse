@@ -1,0 +1,18 @@
+# Manifest only: publish = false, nothing is published (the crate name vbm-sse is reserved by docs/decisions/0001-vbm-sse.md).
+# loader.rs is the hand-written build script: it tells the linker where libvbm_sse is (VBM_SSE_LIB_DIR).
+[package]
+name = "vbm-sse"
+version = "0.0.0"
+edition = "2021"
+description = "Verified Server-Sent Events reader (HTML Standard 9.2.5, 9.2.6): Rust binding generated from the vbm-sse ABI description"
+license = "Apache-2.0"
+publish = false
+build = "loader.rs"
+
+[lib]
+name = "vbm_sse"
+path = "src/lib.rs"
+
+[[test]]
+name = "vectors"
+path = "tests/vectors.rs"

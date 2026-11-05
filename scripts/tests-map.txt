@@ -17,3 +17,4 @@ scripts/test_relabel_attacks.sh: scripts/relabel-attacks.sh scripts/attacks/ scr
 scripts/test_abi.sh: abi/ include/ LeanSse/Abi.lean scripts/check_abi.py
 scripts/test_native.sh: abi/ runtime/ include/ tests/ scripts/build_native.sh scripts/build_shared.sh scripts/lib-no-crash-record.sh vectors/ LeanSse/ LeanSse.lean
 scripts/test_wasm.sh: abi/ runtime/ include/ tests/ scripts/build_wasm.sh vectors/ LeanSse/ LeanSse.lean
+scripts/test_bindings.sh: abi/ bindings/ include/ runtime/ tests/ scripts/gen_bindings.py scripts/gen-bindings.sh scripts/build_shared.sh scripts/build_native.sh vectors/ LeanSse/ LeanSse.lean

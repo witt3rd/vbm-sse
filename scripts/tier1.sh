@@ -86,6 +86,8 @@ par scripts/test_vectors.sh
 par scripts/test_abi.sh
 par scripts/test_native.sh
 par scripts/test_wasm.sh
+# The generated bindings equal their generator's output and run the vectors (test_bindings; Rust skipped without cargo, required by Tier 2); corrupted rows and mutants of each generated reader each fail.
+par scripts/test_bindings.sh
 
 # 2f. The workflow files are structurally valid (scripts/lint-workflows.py: one of uses/run per step, no with: under a run, jobs exist); its negative self-test is declared below.
 python3 scripts/lint-workflows.py

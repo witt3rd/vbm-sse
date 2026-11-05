@@ -1,0 +1,3 @@
+# Mutants of the scorecard's mutation metric (abi/vbm_sse.c) that are EQUIVALENT: no test can tell them from the code. One per line, three TAB-separated fields:
+#   id = file:line:col:old:new (line 1-based, col 0-based, as the runner numbers them) TAB reason (at least 20 characters; an entry with no reason does not count) TAB expiry (YYYY-MM-DD)
+# The score is killed / (killed + survivors that are not listed here). None is listed yet: every surviving mutant of the first card run is reported as it is (docs/decisions/0001-vbm-sse.md).

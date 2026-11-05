@@ -2,7 +2,7 @@
 
 One file listing **everything outside our direct control that vbm-sse executes or depends on**: code we did not prove, code we did not write, and facilities we assume. It exists because verified by construction is the first priority: the size of the unverified base and the handling of its boundary is the most critical measure. A boundary with no entry here does not land (`scripts/trust-ledger-check.sh`, Tier 1). The pattern is the one of [vbm-json](https://github.com/witt3rd/vbm-json); only the derivation of the required set differs.
 
-**Snapshot:** the specification, the incremental machine and the array machine are pure Lean over `Init`; there is no `@[extern]`. The three Lean exports the C interface calls (`LeanSse.abiNew`, `abiFeed`, `abiReport`; `scripts/closure-entries.txt`) have a closure of `LeanSse` plus `Init`. The trusted pieces around them are the C interface (T09), the freestanding runtime (T10) and the tools of the C and WebAssembly builds (T11), besides the build entries (T01 to T08).
+**Snapshot:** the specification, the incremental machine and the array machine are pure Lean over `Init`; there is no `@[extern]`. The three Lean exports the C interface calls (`LeanSse.abiNew`, `abiFeed`, `abiReport`; `scripts/closure-entries.txt`) have a closure of `LeanSse` plus `Init`. The trusted pieces around them are the C interface (T09), the freestanding runtime (T10), the hand-written loaders of the bindings (T11) and the tools of the C, WebAssembly and binding builds (T12), besides the build entries (T01 to T08).
 
 ## How the gate keeps this file true
 
@@ -91,7 +91,7 @@ Entry format: **What** it is; **Enters** where it enters; **Assumes** what we as
 - **Plan:** sandbox. Keep the permissions read-only and secret-free; the actions are pinned to commit shas; the cache never replaces the gates.
 - **Covers:** `file:.github/workflows/core.yml`
 
-## The C interface and the runtime
+## The C interface, the runtime and the bindings
 
 ### T09. The C interface (abi/vbm_sse.c, abi/lean_mini.h, include/vbm_sse.h)
 - **What:** the C edge of the library, about 100 lines. `vbm_sse_new`, `vbm_sse_feed`, `vbm_sse_free` copy a chunk into a Lean `ByteArray`, call the three Lean exports (`vbm_sse_lean_new`, `vbm_sse_lean_feed`, `vbm_sse_lean_report`) and hand the caller the bytes of the report; the reader lives in a Lean `ByteArray` payload (no `malloc`). `abi/lean_mini.h` stands in for `lean.h` in the freestanding compile (WebAssembly, the scorecard): the few names the shim uses.
@@ -111,16 +111,25 @@ Entry format: **What** it is; **Enters** where it enters; **Assumes** what we as
 - **Plan:** replace. A shared `vbm-rt`, with its own tests, once a second library carries a copy; until then each repository carries the copy it was tested with.
 - **Covers:** `file:runtime/rt.c`
 
-### T11. The C and WebAssembly tools
-- **What:** `leanc` and the bundled `clang`, `ld.lld` (T04) build the hosted test programs and the freestanding objects; `node` (the WebAssembly module's host in `tests/wasm/`). None is part of an artifact; each runs the vectors.
-- **Enters:** `scripts/test_native.sh` and `scripts/test_wasm.sh`.
-- **Assumes:** that they run the code they are given (no written contract); the tests are the check on our use of them (a corrupted row, a leak and mutants each fail the run); Tier 2 requires `node` (Tier 1 skips it when absent, and says so).
-- **Test:** `scripts/test_wasm.sh` (a module with an import and an unresolved symbol each fail).
+### T11. The hand-written loaders of the bindings
+- **What:** `bindings/python/vbm_sse/loader.py` finds and opens `libvbm_sse` (`VBM_SSE_LIB`, the package directory, the system); `bindings/rust/loader.rs` (a build script) tells the linker where it is (`VBM_SSE_LIB_DIR`). The rest of each binding (types, prototypes, the error classes, the report reader) is generated from `abi/vbm_sse.abi.json` and checked against it on every Tier 1 run.
+- **Enters:** the Python and Rust bindings.
+- **Assumes:** that the file found is the library built from this tree (no check: a wrong library is a wrong answer, not an unsafe one, because the generated prototypes are the ABI's); no written contract.
+- **Test:** `scripts/test_bindings.sh` loads the library it just built through each loader and runs the vectors; a loader that cannot find it fails every row.
+- **Owner:** the owner.
+- **Plan:** accept, because a loader decides nothing and a mistake in it is loud.
+- **Covers:** `file:bindings/python/vbm_sse/loader.py` `file:bindings/rust/loader.rs`
+
+### T12. The C, WebAssembly and binding tools
+- **What:** `leanc` and the bundled `clang`, `ld.lld` (T04) build the hosted test programs and the freestanding objects; `node` (the WebAssembly module's host in `tests/wasm/`); `cargo` and `python3` (T07) run the Rust and Python bindings' tests. None is part of an artifact; each runs the vectors.
+- **Enters:** `scripts/test_native.sh`, `scripts/test_wasm.sh`, `scripts/test_bindings.sh` and the scorecard's runs.
+- **Assumes:** that they run the code they are given (no written contract); the tests are the check on our use of them (a corrupted row, a leak and mutants each fail the run); Tier 2 requires `node` and `cargo` (Tier 1 skips them when absent, and says so).
+- **Test:** `scripts/test_wasm.sh` (a module with an import and an unresolved symbol each fail), `scripts/test_bindings.sh`.
 - **Owner:** upstream tools; the owner approves the scripts (protected set).
 - **Plan:** accept, because they touch the process and not the artifact.
 - **Covers:** `tool:leanc` `tool:node`
 
 ## Planned (not in the tree yet; promoted to a numbered entry, with a derived key, in the landing that adds the file)
 
-- **P1. The language bindings (Python, Rust, a JavaScript package over the WebAssembly module).** Generated from `abi/vbm_sse.abi.json`; the loader of each is a numbered entry when it lands. The WebAssembly host in `tests/wasm/vbm_sse.mjs` is test code today.
+- **P1. Further bindings (JavaScript package over the WebAssembly module, Go, ...).** Generated from `abi/vbm_sse.abi.json` as the Python and Rust ones are; the loader of each is a numbered entry when it lands. The WebAssembly host in `tests/wasm/vbm_sse.mjs` is test code today.
 - **P2. The per-language registries and runners in CI** (npm, crates.io, PyPI, the Node and Rust toolchains): outside our control; listed when a package is published.

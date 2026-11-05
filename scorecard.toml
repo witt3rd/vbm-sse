@@ -1,6 +1,5 @@
-# The scorecard adapter of vbm-sse (the submission contract of the VBM scorecard; every key is required by its schema). Written for what exists at the first landing: the Lean specification, the
-# proofs, the gates. The sections that measure a compiled artifact (bare metal, mutation, bench, nonvacuity) carry commands that cannot pass yet: an honest card fails them, with the dated plan
-# in docs/decisions/0001-vbm-sse.md and the roadmap (the C interface, the freestanding runtime, the WebAssembly build, then the mutation and efficiency metrics).
+# The scorecard adapter of vbm-sse (the submission contract of the VBM scorecard; every key is required by its schema). The Lean specification, the proofs, the gates, the C interface, the freestanding
+# native library, the WebAssembly module and the code mutants of the C interface are measured. The throughput bench is not (it fails, with its dated plan in [bench]): an honest card says so.
 [subject]
 name = "vbm-sse"
 kind = "library"
@@ -14,7 +13,7 @@ ledger = "docs/trust-ledger.md"
 entry_regex = "^### T[0-9]"
 
 [tests]
-# the vectors are generated from the reference (to come: vbm-sse-vectors-1); the standard's own examples are theorems, not tests
+# the vectors are generated from the reference (vbm-sse-vectors-1); the standard's own examples are theorems, not tests
 generated = ["vectors/**"]
 extra = []
 gate_selftests = ["scripts/test_*.sh"]
@@ -32,35 +31,41 @@ axiom_regex = 'axiom gate: [0-9]+ constants checked, ([0-9]+) offending'
 axiom_timeout_seconds = 900
 
 [bare_metal]
-# no C yet: the commands fail honestly until the C interface lands (plan: next landings, docs/decisions/0001-vbm-sse.md)
-build_cmd = 'cd /subject && test -f abi/vbm_sse.c'
-symbols_cmd = 'echo --end-of-symbols--'
+# the freestanding build: the C interface compiled with no libc header and no libc (abi/lean_mini.h stands in for lean.h); the symbols: the undefined symbols of the shipped freestanding native library
+# (the generated C of LeanSse, abi/vbm_sse.c and runtime/rt.c linked into one object, scripts/build_native.sh, which itself fails on any): none. The wasm32 module is built by the subject's script and has no imports.
+build_cmd = 'cp -a /subject /tmp/w && cd /tmp/w && leanc -ffreestanding -nostdlib -nostdinc -c abi/vbm_sse.c -I include -I "$(lean --print-prefix)/include" -o /tmp/x.o'
+symbols_cmd = 'cp -a /subject /tmp/w && cd /tmp/w && scripts/build_native.sh /tmp/o --no-so >/dev/null 2>&1 && { nm -u /tmp/o/vbm_sse.o | sed -n "s/^ *U //p" | sort -u; echo --end-of-symbols--; }'
 allowed_symbols = []
-wasm_cmd = 'cd /subject && test -f scripts/build_wasm.sh'
+wasm_cmd = 'cp -a /subject /tmp/w && cd /tmp/w && lake build LeanSse:static >/dev/null 2>&1 && scripts/build_wasm.sh /tmp/vbm_sse.wasm'
 wasm_bytes_regex = '([0-9]+) bytes'
 timeout_seconds = 900
 
 [mutation]
 comment = "//"
 equivalent = "mutants-equivalent.txt"
-# code mutants of the C interface (abi/vbm_sse.c, not written yet): killed by its test harness running the generated vectors. Until it exists nothing is killed.
+# code mutants (the scorecard's operator swaps, seeded) of the C interface (abi/vbm_sse.c), killed by the subject's C test harness running the GENERATED vectors through the library built from the mutated file. setup builds the Lean libraries and the vectors once;
+# the harness rebuilds the freestanding library with the mutated shim (exit 99: it does not build, so the mutant is not viable) and runs every vector on every cut (non-zero: killed).
 files = ["abi/vbm_sse.c"]
-setup_cmd = 'true'
-kill_cmd = 'false'
-mutants = 1
+setup_cmd = 'lake build LeanSse:static vbm-sse-vectors >/dev/null 2>&1 && lake exe vbm-sse-vectors --n 3 --out /tmp/v.jsonl >/dev/null 2>&1'
+kill_cmd = 'VBM_KEEP=vbm_sse_rt_live scripts/build_native.sh /tmp/mlib --no-so >/dev/null 2>&1 || exit 99; leanc -isystem /usr/include $(test -d /usr/include/$(uname -m)-linux-gnu && echo -isystem /usr/include/$(uname -m)-linux-gnu) -I include -o /tmp/abi_t tests/abi_test.c /tmp/mlib/libvbm_sse.a >/dev/null 2>&1 || exit 99; /tmp/abi_t /tmp/v.jsonl >/dev/null 2>&1'
+mutants = 50
 seed = 1
 kill_timeout_seconds = 120
-timeout_seconds = 600
+timeout_seconds = 1800
 
 [bench]
-# a scalar comparator is required by the schema; the roadmap names eventsource-parser (npm). No measurement exists yet: the command fails, so the card says so.
+# NOT MEASURED YET, on purpose: a throughput bench needs a pinned scalar comparator built outside the sandbox (the roadmap names eventsource-parser, npm: a pinned version, the sha256 of its files and of the corpus, mounted read-only
+# like the comparators of the sibling library). The plan, dated: the corpus (a deterministic stream of chat-completion-shaped events) and the driver through the C interface land with the comparator builder (the scorecard's
+# comparators/build.sh gains an eventsource-parser entry); until then this command fails and the card says so. Nothing is estimated.
 comparators = [{ name = "eventsource-parser", scalar = true }]
 timeout_seconds = 600
 cmd = 'false'
 
 [nonvacuity]
 comment = "--"
-files = ["LeanSse/Spec.lean"]
+# mutants no proof can tell from the code, argued in the subject (a hyphen inside a /-! block comment: the runner knows `--` comments only)
+equivalent = "nonvacuity-equivalent.txt"
+files = ["LeanSse/Spec.lean", "LeanSse/Fast.lean"]
 setup_cmd = 'cp -a /subject /tmp/w && cd /tmp/w && lake build LeanSse LeanSseProofs >/dev/null 2>&1'
 kill_cmd = 'lake build LeanSse >/dev/null 2>&1 || exit 99; lake build LeanSseProofs >/dev/null 2>&1'
 mutants = 20
@@ -69,7 +74,25 @@ kill_timeout_seconds = 900
 timeout_seconds = 3500
 
 [tier1]
-command = 'cp -a /subject /tmp/w && cd /tmp/w && TIER1_ALL=1 scripts/tier1.sh'
+# git config: a fresh clone has no hooksPath, which the subject's own commit-guard self-test requires (its worktree tool sets it).
+# The sandbox caps memory at 4 GB and the fast gate starts three Lean gates at once (each 2 to 4 GB: the axiom gate, the closure gate and its self-tests): all three at once are OOM-killed. A `lake` shim serialises the `lake env lean --run`
+# gates (one at a time, flock) and TEST_JOBS=1 runs its test scripts one at a time; the subject's scripts/tier1.sh is run unchanged, and the extra wall seconds are part of the timed result. TIER1_ALL=1: the subject selects the tests a delta
+# can affect, a card times and counts the whole gate, cold.
+command = '''cp -a /subject /tmp/w && cd /tmp/w && git config core.hooksPath scripts/githooks &&
+R=$(command -v lake) && mkdir /tmp/shim &&
+cat > /tmp/shim/lake <<SH
+#!/bin/bash
+case " \$* " in *" --run "*) exec flock /tmp/lean-heavy.lock $R "\$@";; *) exec $R "\$@";; esac
+SH
+chmod +x /tmp/shim/lake && PATH=/tmp/shim:$PATH TEST_JOBS=1 TIER1_ALL=1 scripts/tier1.sh'''
+# The WARM run (velocity.tier1_seconds_warm): what a landing costs. It runs in the same sandbox right after the cold run, on the build cache that run left in /tmp/w (and the shim in /tmp/shim). The typical change is an edit to
+# a proofs file (a comment line in LeanSseProofs/Examples.lean): the fast gate selects the tests a delta can affect (scripts/tests-map.txt: LeanSseProofs/ selects none), so it runs every gate of the always-run set (forbidden constructs,
+# Init-only imports, the lints, the zero-warning build, the axiom, ledger and closure gates, the trust ledger, the scrub gate) and no test script. The gates whose evidence is a test script are therefore the named warm_skips; every
+# other gate must show its self-test evidence in the warm output. A change to LeanSse/ (the specification and the code) selects every test: that is the cold run's cost, shown beside it.
+warm_change_cmd = 'cd /tmp/w && printf "\n-- warm-run change: a comment\n" >> LeanSseProofs/Examples.lean'
+warm_command = 'cd /tmp/w && PATH=/tmp/shim:$PATH TEST_JOBS=1 scripts/tier1.sh'
+warm_timeout_seconds = 900
+warm_skips = ["vectors check", "C ABI description check", "freestanding native test", "wasm32 build test", "language bindings test", "workflow lint", "protected-set gate", "lander", "commit-on-main guard", "parallel test runner", "delta test selection", "crash-record check", "gate-diff judge", "relabel-attack suite"]
 timeout_seconds = 1800
 script = "scripts/tier1.sh"
 gates = [
@@ -84,6 +107,10 @@ gates = [
   { name = "trust ledger", selftest = "trust ledger: .* [0-9]+ negative self-tests ok" },
   { name = "scrub gate", selftest = "scrub: negative self-tests ok" },
   { name = "vectors check", selftest = "^ok +scripts/test_vectors\\.sh" },
+  { name = "C ABI description check", selftest = "^ok +scripts/test_abi\\.sh" },
+  { name = "freestanding native test", selftest = "^ok +scripts/test_native\\.sh" },
+  { name = "wasm32 build test", selftest = "^ok +scripts/test_wasm\\.sh" },
+  { name = "language bindings test", selftest = "^ok +scripts/test_bindings\\.sh" },
   { name = "workflow lint", selftest = "^ok +scripts/test_lint_workflows\\.sh" },
   { name = "protected-set gate", selftest = "^ok +scripts/test_protected_set\\.sh" },
   { name = "lander", selftest = "^ok +scripts/test_land_direct\\.sh" },
@@ -94,8 +121,8 @@ gates = [
   { name = "gate-diff judge", selftest = "^ok +scripts/test_gate_diff_improving\\.sh" },
   { name = "relabel-attack suite", selftest = "^ok +scripts/test_relabel_attacks\\.sh" },
 ]
-attack_cmd = 'cp -a /subject /tmp/w && cd /tmp/w && scripts/relabel-attacks.sh --no-lean'
-attack_sabotage_cmd = 'cp -a /subject /tmp/w && cd /tmp/w && scripts/relabel-attacks.sh --no-lean --sabotage'
+attack_cmd = 'cp -a /subject /tmp/w && cd /tmp/w && git config core.hooksPath scripts/githooks && scripts/relabel-attacks.sh --no-lean'
+attack_sabotage_cmd = 'cp -a /subject /tmp/w && cd /tmp/w && git config core.hooksPath scripts/githooks && scripts/relabel-attacks.sh --no-lean --sabotage'
 attack_timeout_seconds = 1800
 
 [velocity]
