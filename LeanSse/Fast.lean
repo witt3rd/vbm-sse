@@ -145,15 +145,49 @@ def scanFast (c : ByteArray) (i : Nat) : Nat :=
     (if i < c.size then (scanU c n hn i.toUSize).toNat else c.size)
   else scanEol c i
 
+/-- Index of the first colon of `c` in `[i, j)` (`j` if none). -/
+def colonFrom (c : ByteArray) (j : Nat) (hj : j ≤ c.size) (i : Nat) : Nat :=
+  if h : i < j then (if c[i] = COLON then i else colonFrom c j hj (i + 1)) else j
+termination_by j - i
+
+/-- Is the name `c[i, k)` the field name `data`? (four byte tests, nothing built) -/
+def isDataAt (c : ByteArray) (i k : Nat) : Bool :=
+  if h : i + 3 < k ∧ k = i + 4 ∧ k ≤ c.size then c[i] == 100 && c[i + 1] == 97 && c[i + 2] == 116 && c[i + 3] == 97 else false
+
+/-- `applyField` on a line that is still in the chunk: the name is `c[i, k)`, the value is `c[s, j)`. A `data` line appends its value to the data buffer in one copy; any other field builds its name and value. -/
+def applyFieldS (p : FProc) (c : ByteArray) (i k s j : Nat) : FProc :=
+  if isDataAt c i k then { p with data := (c.copySlice s p.data p.data.size (j - s) false).push LF }
+  else applyFieldF p (c.extract i k) (c.extract s j)
+
+/-- Where the value of a field line `c[i, j)` starts, given the place `k` of its first colon (`j` if none): after the colon and one space if there is one. -/
+def valStart (c : ByteArray) (j : Nat) (hj : j ≤ c.size) (k : Nat) : Nat :=
+  if k < j then (if h2 : k + 1 < j then (if c[k + 1]'(by omega) = SPACE then k + 2 else k + 1) else k + 1) else j
+
+/-- `procLine` on the line `c[i, j)` of a chunk, without copying the line out of it. -/
+def procSliceF (p : FProc) (c : ByteArray) (i j : Nat) (hj : j ≤ c.size) : FProc × Option FEvent :=
+  if h : i < j then
+    (if c[i]'(by omega) = COLON then (p, none)
+    else
+      let k := colonFrom c j hj i
+      (applyFieldS p c i k (valStart c j hj k) j, none))
+  else dispatchF p
+
 /-- The bytes of `c` from `i` on, through the machine, a run of bytes that are no line end taken at once (appended to the held line in one copy); the byte order mark and the line ends go through `stepF`.
 `feedLoop_eq_bulk` (proofs) says it is `feedLoop`. -/
 def feedBulk (c : ByteArray) (i : Nat) (s : FSt) : FSt :=
   if h : i < c.size then
     if s.bom < 3 then feedBulk c (i + 1) (stepF s c[i])
     else
-      let j := scanFast c i
-      if h2 : i < j then feedBulk c j { s with skipLF := false, line := c.copySlice i s.line s.line.size (j - i) false }
-      else feedBulk c (i + 1) (stepF s c[i])
+      match hj : scanFast c i with
+      | j =>
+        if h2 : i < j then
+          if h3 : s.line.size = 0 ∧ j < c.size then
+            -- the whole line is in this chunk and nothing is held: run it from the chunk, then take its terminator
+            let r := procSliceF s.p c i j (by omega)
+            let o := (match r.2 with | some ev => s.out.push ev | none => s.out)
+            feedBulk c (j + 1) { s with line := ByteArray.empty, p := r.1, skipLF := ((c[j]'h3.2) == CR), out := o }
+          else feedBulk c j { s with skipLF := false, line := c.copySlice i s.line s.line.size (j - i) false }
+        else feedBulk c (i + 1) (stepF s c[i])
   else s
 termination_by c.size - i
 decreasing_by all_goals omega

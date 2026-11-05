@@ -368,6 +368,127 @@ theorem copySlice_append (c : ByteArray) (i j : Nat) (a : ByteArray) (e : Bool) 
   · have : j ≤ i := by omega
     rw [Array.extract_eq_empty_of_le (by omega), Array.extract_eq_empty_of_le (by simp; omega)]
 
+/-- The scan stops at a line end whenever it stops inside the array. -/
+theorem scanEol_eol (c : ByteArray) (i : Nat) : ∀ j (hj : j < c.size), scanEol c i = j → c[j] = LF ∨ c[j] = CR := by
+  induction i using scanEol.induct c with
+  | case1 i hi hb =>
+    intro j hj e
+    rw [scanEol] at e; simp only [hi, ↓reduceDIte, hb, ↓reduceIte] at e
+    subst e; simpa using hb
+  | case2 i hi hb ih =>
+    intro j hj e
+    have : ¬ (c[i] == LF || c[i] == CR) = true := by simpa using hb
+    rw [scanEol] at e; simp only [hi, ↓reduceDIte, this, Bool.false_eq_true, ↓reduceIte] at e
+    exact ih j hj e
+  | case3 i hi => intro j hj e; rw [scanEol] at e; simp only [hi, ↓reduceDIte] at e; omega
+
+theorem colonFrom_bounds (c : ByteArray) (j : Nat) (hj : j ≤ c.size) (i : Nat) (hi : i ≤ j) : i ≤ colonFrom c j hj i ∧ colonFrom c j hj i ≤ j := by
+  induction i using colonFrom.induct c j hj with
+  | case1 i h hc => rw [colonFrom]; simp only [h, ↓reduceDIte, hc, ↓reduceIte]; omega
+  | case2 i h hc ih => rw [colonFrom]; simp only [h, ↓reduceDIte, hc, ↓reduceIte]; have := ih (by omega); omega
+  | case3 i h => rw [colonFrom]; simp only [h, ↓reduceDIte]; omega
+
+/-- The first colon of a slice, found in the chunk or in the slice built from it, is the same place. -/
+theorem colonAt_slice (c : ByteArray) (a j : Nat) (hj : j ≤ c.size) (haj : a ≤ j) (i : Nat) (hai : a ≤ i) :
+    colonAt (c.extract a j) (i - a) = colonFrom c j hj i - a := by
+  have hs : (c.extract a j).size = j - a := by rw [ByteArray.size_extract]; omega
+  induction i using colonFrom.induct c j hj with
+  | case1 i h hc =>
+    rw [colonAt, colonFrom]
+    have h1 : i - a < (c.extract a j).size := by omega
+    simp only [h, ↓reduceDIte, h1, ByteArray.getElem_extract, show a + (i - a) = i by omega, hc, ↓reduceIte]
+  | case2 i h hc ih =>
+    rw [colonAt, colonFrom]
+    have h1 : i - a < (c.extract a j).size := by omega
+    have := ih (by omega)
+    simp only [h, ↓reduceDIte, h1, ByteArray.getElem_extract, show a + (i - a) = i by omega, hc, ↓reduceIte]
+    rw [show i - a + 1 = i + 1 - a by omega, this]
+  | case3 i h =>
+    rw [colonAt, colonFrom]
+    have h1 : ¬ i - a < j - a := by omega
+    simp only [h, ↓reduceDIte, hs, h1]
+
+/-- Cutting a slice at its first colon: the name and the value are slices of the chunk. -/
+theorem splitFieldF_slice (c : ByteArray) (i j : Nat) (hj : j ≤ c.size) (hij : i < j) :
+    splitFieldF (c.extract i j) =
+      (c.extract i (colonFrom c j hj i),
+       c.extract (valStart c j hj (colonFrom c j hj i)) j) := by
+  have hs : (c.extract i j).size = j - i := by rw [ByteArray.size_extract]; omega
+  have hk := colonAt_slice c i j hj (by omega) i (Nat.le_refl _)
+  rw [Nat.sub_self] at hk
+  obtain ⟨hk1, hk2⟩ := colonFrom_bounds c j hj i (by omega)
+  generalize colonFrom c j hj i = k at *
+  unfold splitFieldF valStart
+  rw [hk]
+  by_cases hkj : k < j
+  · have h1 : k - i < (c.extract i j).size := by omega
+    simp only [h1, hkj, ↓reduceIte]
+    refine Prod.ext ?_ ?_
+    · simp only [ByteArray.extract_extract, show min (i + (k - i)) j = k by omega, show i + 0 = i by omega]
+    · by_cases h2 : k + 1 < j
+      · have h3 : k - i + 1 < (c.extract i j).size := by omega
+        simp only [ByteArray.extract_extract, h2, h3, ↓reduceDIte, ByteArray.getElem_extract, show i + (k - i + 1) = k + 1 by omega]
+        by_cases hsp : c[k + 1] = SPACE
+        · simp only [hsp, ↓reduceIte, hs, show i + (k - i + 2) = k + 2 by omega, show min (i + (j - i)) j = j by omega]
+        · simp only [hsp, ↓reduceIte, hs, show i + (k - i + 1) = k + 1 by omega, show min (i + (j - i)) j = j by omega]
+      · have h3 : ¬ k - i + 1 < (c.extract i j).size := by omega
+        have h3' : ¬ k - i + 1 < j - i := by omega
+        simp only [ByteArray.extract_extract, h2, h3, h3', ↓reduceDIte, hs, show i + (k - i + 1) = k + 1 by omega, show min (i + (j - i)) j = j by omega]
+  · have hkeq : k = j := by omega
+    subst hkeq
+    have h1 : ¬ k - i < (c.extract i k).size := by omega
+    simp only [h1, hkj, ↓reduceIte, ByteArray.extract_same]
+
+theorem isDataAt_eq (c : ByteArray) (i k : Nat) (h : isDataAt c i k = true) : c.extract i k = fDataB := by
+  unfold isDataAt at h
+  split at h
+  · rename_i hc
+    simp only [Bool.and_eq_true, beq_iff_eq] at h
+    obtain ⟨⟨⟨h0, h1⟩, h2⟩, h3⟩ := h
+    obtain ⟨_, hk, hks⟩ := hc
+    subst hk
+    apply ByteArray.ext_getElem
+    · rw [ByteArray.size_extract]; simp [fDataB]; omega
+    · intro m hm hm'
+      have hm4 : m < 4 := by rw [ByteArray.size_extract] at hm; omega
+      rw [ByteArray.getElem_extract]
+      obtain rfl | rfl | rfl | rfl : m = 0 ∨ m = 1 ∨ m = 2 ∨ m = 3 := by omega
+      all_goals try simp only [Nat.add_zero]
+      · rw [h0]; rfl
+      · rw [h1]; rfl
+      · rw [h2]; rfl
+      · rw [h3]; rfl
+  · simp at h
+
+theorem applyFieldS_eq (p : FProc) (c : ByteArray) (i k s j : Nat) : applyFieldS p c i k s j = applyFieldF p (c.extract i k) (c.extract s j) := by
+  unfold applyFieldS
+  by_cases h : isDataAt c i k = true
+  · simp only [h, ↓reduceIte]
+    rw [isDataAt_eq c i k h]
+    obtain ⟨n1, n2, n3, n4, n5, n6⟩ := names_ne
+    have hne : fDataB ≠ fEventB := fun e => n1 (by rw [← L_fDataB, ← L_fEventB, e])
+    unfold applyFieldF
+    simp only [hne, ↓reduceIte]
+    rw [copySlice_append]
+  · simp [h]
+
+theorem procSliceF_eq (p : FProc) (c : ByteArray) (i j : Nat) (hj : j ≤ c.size) :
+    procSliceF p c i j hj = procLineF p (c.extract i j) := by
+  by_cases hij : i < j
+  · have hs : (c.extract i j).size = j - i := by rw [ByteArray.size_extract]; omega
+    have h0 : 0 < (c.extract i j).size := by omega
+    have hg : (c.extract i j)[0]'h0 = c[i]'(by omega) := by rw [ByteArray.getElem_extract]; simp
+    unfold procSliceF procLineF
+    simp only [hij, h0, ↓reduceDIte, hg]
+    by_cases hc : c[i]'(by omega) = COLON
+    · simp [hc]
+    · simp only [hc, ↓reduceIte]
+      rw [splitFieldF_slice c i j hj hij]
+      simp only [applyFieldS_eq]
+  · have h0 : ¬ 0 < (c.extract i j).size := by rw [ByteArray.size_extract]; omega
+    unfold procSliceF procLineF
+    simp only [hij, h0, ↓reduceDIte]
+
 /-- One step of the machine on a byte that is no line end, once the byte order mark is settled: the byte joins the held line. -/
 theorem stepF_plain (s : FSt) (b : UInt8) (h3 : ¬ s.bom < 3) (hl : b ≠ LF) (hc : b ≠ CR) :
     stepF s b = { s with skipLF := false, line := s.line.push b } := by
@@ -409,30 +530,55 @@ theorem feedLoop_run (c : ByteArray) (i e : Nat) (he : e ≤ c.size) (hne : ∀ 
     rw [extract_succ s.line c i (i + (d + 1)) (by omega) hi]
     rfl
 
+/-- A whole line in the chunk, nothing held: the bytes of the line and its terminator, as one step. -/
+theorem feedLoop_line (c : ByteArray) (i j : Nat) (hj : j < c.size) (hij : i < j)
+    (hne : ∀ k (hk : k < c.size), i ≤ k → k < j → c[k] ≠ LF ∧ c[k] ≠ CR) (heol : c[j] = LF ∨ c[j] = CR)
+    (s : FSt) (hs : ¬ s.bom < 3) (hl : s.line.size = 0) :
+    feedLoop c i s = feedLoop c (j + 1)
+      { s with line := ByteArray.empty, p := (procSliceF s.p c i j (by omega)).1, skipLF := ((c[j]) == CR),
+               out := (match (procSliceF s.p c i j (by omega)).2 with | some ev => s.out.push ev | none => s.out) } := by
+  have run := feedLoop_run c i j (by omega) hne (j - i - 1) (by omega) s hs
+  rw [show i + (j - i - 1 + 1) = j by omega] at run
+  rw [run, feedLoop]
+  simp only [hj, ↓reduceDIte]
+  have hl' : s.line = ByteArray.empty := ByteArray.size_eq_zero_iff.mp hl
+  have hpl : procLineF s.p (c.extract i j) = procSliceF s.p c i j (by omega) := (procSliceF_eq _ _ _ _ _).symm
+  have hstep : stepF { s with skipLF := false, line := s.line ++ c.extract i j } c[j] =
+      { s with line := ByteArray.empty, p := (procSliceF s.p c i j (by omega)).1, skipLF := ((c[j]) == CR),
+               out := (match (procSliceF s.p c i j (by omega)).2 with | some ev => s.out.push ev | none => s.out) } := by
+    unfold stepF
+    simp only [hs, ↓reduceIte]
+    unfold stepBodyF endLineF
+    rw [hl', ByteArray.empty_append, hpl]
+    rcases heol with h | h
+    · simp [h, LF, CR]; rfl
+    · simp [h, LF, CR]; rfl
+  rw [hstep]
+
 /-- The bulk loop is the byte loop: the same state. -/
 theorem feedBulk_eq (c : ByteArray) (i : Nat) (s : FSt) : feedBulk c i s = feedLoop c i s := by
   induction i, s using feedBulk.induct c with
   | case1 i s h h3 ih => rw [feedBulk, feedLoop]; simp only [h, ↓reduceDIte, h3, ↓reduceIte, ih]
-  | case2 i s h h3 j h2 ih =>
-    have hj : j = scanEol c i := scanFast_eq c i
-    clear_value j
-    subst hj
-    have h2' : i < scanEol c i := h2
-    rw [feedBulk]; simp only [h, ↓reduceDIte, h3, ↓reduceIte, scanFast_eq]
-    simp only [h2', ↓reduceDIte]
-    rw [copySlice_append]
-    rw [copySlice_append] at ih
+  | case2 i s h h3 h2 h4 r o ih =>
+    have hj := scanFast_eq c i
+    have hne : ∀ k (hk : k < c.size), i ≤ k → k < scanFast c i → c[k] ≠ LF ∧ c[k] ≠ CR := fun k hk h1 h5 => scanEol_ne c i k hk h1 (hj ▸ h5)
+    have heol := scanEol_eol c i (scanFast c i) h4.2 hj.symm
+    rw [feedBulk]; simp only [h, ↓reduceDIte, h3, ↓reduceIte, h2, h4, and_self]
     refine Eq.trans ih ?_
-    have := feedLoop_run c i (scanEol c i) (scanEol_le c i (by omega)) (scanEol_ne c i) (scanEol c i - i - 1) (by omega) s h3
-    rw [show i + (scanEol c i - i - 1 + 1) = scanEol c i by omega] at this
+    exact (feedLoop_line c i (scanFast c i) h4.2 h2 hne heol s h3 h4.1).symm
+  | case3 i s h h3 h2 h4 ih =>
+    have hj := scanFast_eq c i
+    have hle : scanFast c i ≤ c.size := by rw [hj]; exact scanEol_le c i (by omega)
+    have hne : ∀ k (hk : k < c.size), i ≤ k → k < scanFast c i → c[k] ≠ LF ∧ c[k] ≠ CR := fun k hk h1 h5 => scanEol_ne c i k hk h1 (hj ▸ h5)
+    rw [feedBulk]; simp only [h, ↓reduceDIte, h3, ↓reduceIte, h2, h4]
+    rw [copySlice_append] at ih ⊢
+    refine Eq.trans ih ?_
+    have := feedLoop_run c i (scanFast c i) hle hne (scanFast c i - i - 1) (by omega) s h3
+    rw [show i + (scanFast c i - i - 1 + 1) = scanFast c i by omega] at this
     exact this.symm
-  | case3 i s h h3 j h2 ih =>
-    have hj : j = scanEol c i := scanFast_eq c i
-    clear_value j
-    subst hj
-    have h2' : ¬ i < scanEol c i := h2
-    rw [feedBulk, feedLoop]; simp only [h, ↓reduceDIte, h3, ↓reduceIte, scanFast_eq, h2', ih]
-  | case4 i s h => rw [feedBulk, feedLoop]; simp only [h, ↓reduceDIte]
+  | case4 i s h h3 h2 ih =>
+    rw [feedBulk, feedLoop]; simp only [h, ↓reduceDIte, h3, ↓reduceIte, h2, ih]
+  | case5 i s h => rw [feedBulk, feedLoop]; simp only [h, ↓reduceDIte]
 
 /-- The array machine reads a chunk as the list machine does: the same state, and the events appended to `out` are the events the list machine returns. -/
 theorem feedF_sim (s : FSt) (c : ByteArray) : absS (feedF s c) = (feed (absS s) (L c)).1 ∧
