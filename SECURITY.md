@@ -5,7 +5,7 @@ vbm-sse is a **pre-release** library. Nothing is published to a package registry
 ## What to report
 
 - A stream whose events differ from what the HTML Standard's event-stream algorithm (section 9.2.5 and 9.2.6, pinned in `docs/spec-pin.txt`) yields, or events that depend on how the stream was cut into chunks.
-- A crash, hang, out-of-bounds access, leak or unbounded memory use on any input, in the C interface, the runtime or a binding (when they exist).
+- A crash, hang, out-of-bounds access, leak or unbounded memory use on any input, in the C interface, the runtime, the WebAssembly module or a binding.
 - A disagreement between a binding and the Lean reference.
 - A hole in the proofs: a way to make the ledger (`docs/proof-ledger.md`) claim more than is proved (a forbidden construct that evades the gates, an axiom, a theorem about code the exports do not run).
 - Anything in the CI workflows that would expose a secret or run untrusted code with privileges.

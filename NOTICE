@@ -14,3 +14,6 @@ Third-party material:
   contributors. The Lean toolchain is not part of this repository: it is downloaded at build time (mise.toml).
 
 * vbm-land (https://github.com/witt3rd/vbm-land), Apache License 2.0, vendored unchanged in scripts/land/ (see scripts/land/PIN).
+
+* Measured against, not copied or shipped: the throughput bench (docs/bench.md) compares the library with eventsource-parser (https://github.com/rexxars/eventsource-parser, MIT License) and eventsource-stream
+  (https://github.com/jpopesculian/eventsource-stream, MIT or Apache-2.0). Neither is part of this repository; the comparators are built from pinned versions outside it.
