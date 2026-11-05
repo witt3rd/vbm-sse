@@ -17,6 +17,12 @@ for f in Spec Stream Fast Abi; do
   [ -f ".lake/build/ir/LeanSse/$f.c" ] || { echo "build_native: .lake/build/ir/LeanSse/$f.c missing" >&2; exit 1; }
   clang "${cf[@]}" -c ".lake/build/ir/LeanSse/$f.c" -o "$tmp/$f.o"; objs+=("$tmp/$f.o")
 done
+# the pinned verified library vbm-simd (lake package): the generated C of the modules the machine imports, compiled with its trusted header (include/vbm_simd.h of that package; its x86-64 AVX2 body is compiled only for x86-64)
+dep=.lake/packages/vbm-simd
+for f in Spec Lanes Shims Find; do
+  [ -f "$dep/.lake/build/ir/VbmSimd/$f.c" ] || { echo "build_native: $dep/.lake/build/ir/VbmSimd/$f.c missing: run lake build LeanSse:static first" >&2; exit 1; }
+  clang "${cf[@]}" -include "$dep/include/vbm_simd.h" -c "$dep/.lake/build/ir/VbmSimd/$f.c" -o "$tmp/simd$f.o"; objs+=("$tmp/simd$f.o")
+done
 # the shim is compiled as the scorecard compiles it: freestanding, with the Lean include directory only (lean_mini.h stands in for lean.h); the runtime with the stub headers
 clang -ffreestanding -nostdlib -nostdinc -ffunction-sections -fdata-sections -O2 -fPIC -DNDEBUG -Wall -Wextra -Werror -I include -I "$tc/include" -c "${VBM_ABI_C:-abi/vbm_sse.c}" -o "$tmp/abi.o"; objs+=("$tmp/abi.o")
 clang "${cf[@]}" -Wall -Wextra -Werror -c "${VBM_RT_C:-runtime/rt.c}" -o "$tmp/rt.o"; objs+=("$tmp/rt.o")

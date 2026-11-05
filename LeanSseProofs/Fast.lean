@@ -1,4 +1,5 @@
 import LeanSseProofs.Stream
+import VbmSimdProofs.Find
 /-! # The array machine refines the reference
 
 `LeanSse.Fast`'s machine, on byte arrays, is `LeanSse.Stream`'s machine under the map `absS` (arrays to lists, the held line reversed): one byte, one chunk, and by `chunk_invariance`
@@ -299,72 +300,31 @@ theorem scanEol_stop (c : ByteArray) (i : Nat) (h : i < c.size) (h2 : scanEol c 
     simp only [hb, Bool.false_eq_true, ↓reduceIte] at h2
     have := scanEol_ge c (i + 1) (by omega); omega
 
-theorem uget_eq (c : ByteArray) (i : USize) (h : i.toNat < c.size) : c.uget i h = c[i.toNat]'(by omega) := rfl
-
-theorem scanU_eq (c : ByteArray) (n : USize) (hn : n.toNat = c.size) (i : USize) : (scanU c n hn i).toNat = scanEol c i.toNat := by
-  induction i using scanU.induct c n hn with
-  | case1 i h hb =>
-    have h1 := USize.lt_iff_toNat_lt.mp h
-    have hb' : (c[i.toNat]'(by omega) == LF || c[i.toNat]'(by omega) == CR) = true := by simpa only [uget_eq] using hb
-    rw [scanU, scanEol]
-    simp only [h, ↓reduceDIte, show i.toNat < c.size by omega, hb', ↓reduceIte, uget_eq]
-  | case2 i h hb ih =>
-    have h1 := USize.lt_iff_toNat_lt.mp h
-    have h3 : USize.size = 2 ^ System.Platform.numBits := rfl
-    have hb' : ¬ (c[i.toNat]'(by omega) == LF || c[i.toNat]'(by omega) == CR) = true := by simpa only [uget_eq] using hb
-    have h4 : (i + 1).toNat = i.toNat + 1 := by
-      have := USize.toNat_lt_size n
-      have h5 := USize.size_pos
-      rw [USize.toNat_add, USize.toNat_one, ← h3, Nat.mod_eq_of_lt (by omega)]
-    rw [scanU, scanEol]
-    simp only [h, ↓reduceDIte, show i.toNat < c.size by omega, hb', ↓reduceIte, Bool.false_eq_true, uget_eq]
-    rw [ih, h4]
-  | case3 i h =>
-    have h1 : ¬ i.toNat < n.toNat := fun h' => h (USize.lt_iff_toNat_lt.mpr h')
-    rw [scanU, scanEol]
-    simp [h, h1, hn]
-    omega
-
-theorem eolB_eq_zero (b : UInt8) : eolB b = 0 ↔ ¬ (b == LF || b == CR) = true := by
-  unfold eolB; split <;> simp_all
-
-theorem scanU_step (c : ByteArray) (n : USize) (hn : n.toNat = c.size) (i : USize) (h : i < n)
-    (hb : ¬ (c.uget i (by rw [USize.lt_iff_toNat_lt] at h; omega) == LF || c.uget i (by rw [USize.lt_iff_toNat_lt] at h; omega) == CR) = true) :
-    scanU c n hn i = scanU c n hn (i + 1) := by
-  rw [scanU]; simp only [h, ↓reduceDIte, hb, Bool.false_eq_true, ↓reduceIte]
-
-theorem scanU8_eq (c : ByteArray) (n : USize) (hn : n.toNat = c.size) (i : USize) : scanU8 c n hn i = scanU c n hn i := by
-  induction i using scanU8.induct c n hn with
-  | case1 i h h8 a1 a2 a3 a4 a5 a6 a7 a8 hz ih =>
-    rw [scanU8]; simp only [h, and_self, ↓reduceDIte, hz, ↓reduceIte]
-    simp only [beq_iff_eq, UInt8.or_eq_zero_iff, eolB_eq_zero] at hz
-    obtain ⟨⟨⟨⟨⟨⟨⟨z0, z1⟩, z2⟩, z3⟩, z4⟩, z5⟩, z6⟩, z7⟩ := hz
-    have l0 : i < n := USize.lt_iff_toNat_lt.mpr (by omega)
-    have l1 : i + 1 < n := USize.lt_iff_toNat_lt.mpr (by omega)
-    have l2 : i + 1 + 1 < n := USize.lt_iff_toNat_lt.mpr (by omega)
-    have l3 : i + 1 + 1 + 1 < n := USize.lt_iff_toNat_lt.mpr (by omega)
-    have l4 : i + 1 + 1 + 1 + 1 < n := USize.lt_iff_toNat_lt.mpr (by omega)
-    have l5 : i + 1 + 1 + 1 + 1 + 1 < n := USize.lt_iff_toNat_lt.mpr (by omega)
-    have l6 : i + 1 + 1 + 1 + 1 + 1 + 1 < n := USize.lt_iff_toNat_lt.mpr (by omega)
-    have l7 : i + 1 + 1 + 1 + 1 + 1 + 1 + 1 < n := USize.lt_iff_toNat_lt.mpr (by omega)
-    rw [ih, scanU_step c n hn i l0 z0, scanU_step c n hn (i + 1) l1 z1, scanU_step c n hn (i + 1 + 1) l2 z2, scanU_step c n hn (i + 1 + 1 + 1) l3 z3,
-      scanU_step c n hn (i + 1 + 1 + 1 + 1) l4 z4, scanU_step c n hn (i + 1 + 1 + 1 + 1 + 1) l5 z5, scanU_step c n hn (i + 1 + 1 + 1 + 1 + 1 + 1) l6 z6,
-      scanU_step c n hn (i + 1 + 1 + 1 + 1 + 1 + 1 + 1) l7 z7]
-  | case2 i h h8 a1 a2 a3 a4 a5 a6 a7 a8 hz => rw [scanU8]; simp only [h, and_self, ↓reduceDIte, hz]; simp
-  | case3 i h => rw [scanU8]; simp only [h, ↓reduceDIte]
+theorem scanEol_eq_findSpec (c : ByteArray) : ∀ f i, c.size - i ≤ f → scanEol c i = VbmSimd.findSpec c eolSet i := by
+  intro f
+  induction f with
+  | zero => intro i h; rw [scanEol, VbmSimd.findSpec]; simp [show ¬ i < c.size by omega]
+  | succ f ih =>
+    intro i h
+    rw [scanEol, VbmSimd.findSpec]
+    by_cases hi : i < c.size
+    · have hm : VbmSimd.inSet eolSet c[i] = (c[i] == LF || c[i] == CR) := by
+        have e0 : eolSet.toUInt8 = 10 := by decide
+        have e1 : (eolSet >>> 8).toUInt8 = 13 := by decide
+        have e2 : (eolSet >>> 16).toUInt8 = 13 := by decide
+        have e3 : (eolSet >>> 24).toUInt8 = 13 := by decide
+        simp only [VbmSimd.inSet, e0, e1, e2, e3, LF, CR]
+        generalize (c[i] == 10) = x
+        generalize (c[i] == 13) = y
+        cases x <;> cases y <;> rfl
+      simp only [hi, ↓reduceDIte, hm]
+      split
+      · rfl
+      · exact ih (i + 1) (by omega)
+    · simp [hi]
 
 theorem scanFast_eq (c : ByteArray) (i : Nat) : scanFast c i = scanEol c i := by
-  unfold scanFast
-  by_cases hn : c.usize.toNat = c.size
-  · simp only [hn, ↓reduceDIte]
-    by_cases hi : i < c.size
-    · have : i.toUSize.toNat = i := by
-        have hlt : i < USize.size := by have := USize.toNat_lt_size c.usize; omega
-        simpa [Nat.toUSize, USize.toNat_ofNat] using Nat.mod_eq_of_lt hlt
-      simp only [hi, ↓reduceIte]
-      rw [scanU8_eq, scanU_eq, this]
-    · rw [scanEol]; simp [hi]
-  · simp only [hn, ↓reduceDIte]
+  rw [scanFast, VbmSimdProofs.findFirstOf_spec, scanEol_eq_findSpec c _ i (Nat.le_refl _)]
 
 theorem copySlice_append (c : ByteArray) (i j : Nat) (a : ByteArray) (e : Bool) :
     c.copySlice i a a.size (j - i) e = a ++ c.extract i j := by

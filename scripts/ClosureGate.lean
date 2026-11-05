@@ -8,8 +8,11 @@ Walks every definition reachable from the entry points (`scripts/closure-entries
   spec        a `LeanSse` definition (specified; the code IS the specification, one Lean core)
   boundary    an `@[extern]` declaration of ours (a named trust-ledger item)
   toolchain   Lean's `Init` (trusted: docs/trust-ledger.md)
+  pinned      a definition of a PINNED LIBRARY (`scripts/pinned-libs.lock`, docs/decisions/0005-pinned-library.md; today vbm-simd, root `VbmSimd`): counted as SPEC while the library on disk matches its lock
+              line (the lake manifest's rev, the checkout's HEAD, the spec_hash of its spec files) and every module of its root was built from that very checkout; else UNVERIFIED. Its reached mass is
+              printed apart and RATCHETED (`dep_mass` of the baseline may only fall: a new pin or more reached code is a reviewed edit). Its `@[extern]` shims count as boundary.
   UNVERIFIED  a definition of ours outside `LeanSse` (the ABI shim and the like: none yet); its count per module may only fall
-  FORBIDDEN   `LeanSseProofs` (never linked) or `Std`/`Lean` (Init only: a `Lean.*` import forces full runtime initialisation): any such definition
+  FORBIDDEN   `LeanSseProofs` or `VbmSimdProofs` (never linked) or `Std`/`Lean` (Init only: a `Lean.*` import forces full runtime initialisation): any such definition
               reachable from an entry point FAILS the gate.
 There is no handler class here: the boundary never decides (AGENTS.md); that project's handler mass and its target ratchet are not carried over.
 DEFINITIONS (single source: this gate; other scripts quote its printed line, they never recompute):
@@ -30,10 +33,10 @@ open Lean
 def classifyModule (m : Name) : String :=
   let r := m.getRoot
   if r == `LeanSse then "spec"
-  else if r == `LeanSseProofs then "proofs"
+  else if r == `LeanSseProofs || r == `VbmSimdProofs then "proofs"
   else if r == `Init then "toolchain"
   else if r == `Std || r == `Lean then "heavy"
-  else "UNVERIFIED"
+  else "other"   -- a library root that is none of ours nor the toolchain's: a verified pinned library is spec, any other is UNVERIFIED (pinClass); it is never free
 
 def classify (env : Environment) (n : Name) : String :=
   match env.getModuleIdxFor? n with
@@ -87,6 +90,48 @@ def shareFloor (base : List String) : Option (Nat × Nat) :=
 
 def argOf (args : List String) (k d : String) : String := match args.dropWhile (· != k) with | _ :: v :: _ => v | _ => d
 
+/-! Pinned libraries (docs/decisions/0005-pinned-library.md). `scripts/pinned-lib.py verdict` judges the lock against the lake manifest and the checkout (rev, HEAD, spec_hash). A module root that is in neither
+`LeanSse` nor the toolchain is "other": its mass counts as SPEC only when its root is a lock line whose verdict is `ok` AND every module of that root was built from that very checkout (an olean from anywhere
+else is a fork: a local library that merely carries the name). Every other case is UNVERIFIED glue: a mismatch, an absent checkout, a library the lock does not name. -/
+structure Pin where
+  root : String
+  status : String   -- ok | absent | bad
+  dir : String
+  why : String
+deriving Inhabited
+
+def pinVerdicts (args : List String) : IO (Std.HashMap String Pin) := do
+  let a := argOf args
+  let extra := (if a "--pin-lock" "" != "" then #["--lock", a "--pin-lock" ""] else #[]) ++ (if a "--pin-manifest" "" != "" then #["--manifest", a "--pin-manifest" ""] else #[]) ++
+    (if a "--pin-pkgs" "" != "" then #["--pkgs", a "--pin-pkgs" ""] else #[])
+  let o ← IO.Process.output { cmd := "python3", args := #["scripts/pinned-lib.py", "verdict"] ++ extra }
+  if o.exitCode != 0 then throw (IO.userError s!"closure gate: scripts/pinned-lib.py verdict failed: {o.stderr}")
+  let mut m : Std.HashMap String Pin := {}
+  for l in o.stdout.splitOn "\n" do
+    match l.splitOn " " with
+    | r :: st :: dir :: rest => if !l.startsWith "pin " then m := m.insert r { root := r, status := st, dir, why := " ".intercalate rest }
+    | _ => pure ()
+  return m
+
+/-- Is every loaded module of the pin's root an olean under the locked checkout's own build directory? (`none` = yes, else the first offender) -/
+def pinOleans (env : Environment) (p : Pin) : IO (Option String) := do
+  let base := (← IO.FS.realPath p.dir).toString ++ "/.lake/build/"
+  for mn in env.header.moduleNames do
+    if mn.getRoot.toString == p.root then
+      let f ← (findOLean mn)
+      let rp := (← IO.FS.realPath f).toString
+      if !rp.startsWith base then return some s!"{mn} is {rp}, not built from {p.dir}"
+  return none
+
+/-- The class of an "other"-root definition: SPEC only for a verified pin (`ok` and its oleans from the locked checkout), else UNVERIFIED. Pure: the self-tests judge it. -/
+def pinClass (pins : Std.HashMap String Pin) (bad : Std.HashMap String String) (root : String) : String :=
+  match pins.get? root with
+  | some p => if p.status == "ok" && !bad.contains root then "spec" else "UNVERIFIED"
+  | none => "UNVERIFIED"
+
+def rootOf (env : Environment) (n : Name) : Name :=
+  match env.getModuleIdxFor? n with | some i => (env.header.moduleNames[i.toNat]!).getRoot | none => .anonymous
+
 /-- What the walk measured: independent of any baseline, so one measurement serves the run and every self-test. -/
 structure Measure where
   entries : Nat
@@ -96,6 +141,10 @@ structure Measure where
   perModuleMass : Std.HashMap String Nat
   uncovered : Array Name
   forbidden : Array Name
+  /-- the reached mass of the verified pinned libraries (counted in `spec`; ratcheted as `dep_mass`) -/
+  pinnedMass : Nat := 0
+  /-- per pinned library: (root, status, why, reached mass, class) -/
+  pinned : Array (String × String × String × Nat × String) := #[]
 
 /-- Entry points: `--entry N` (repeatable via the file) or `scripts/closure-entries.txt`. An entry that is not in the environment is an error:
 a typo must not measure nothing and pass. -/
@@ -113,6 +162,11 @@ def measureClosure (env : Environment) (args : List String) : IO Measure := do
       if (env.header.moduleNames[idx.toNat]!).getRoot == `LeanSseProofs then
         if let .thmInfo _ := ci then
           for u in ci.type.getUsedConstants do mentioned := mentioned.insert u
+  let pins ← pinVerdicts args
+  let mut pinBad : Std.HashMap String String := {}
+  for (r, p) in pins.toList do
+    if p.status == "ok" then if let some w ← pinOleans env p then pinBad := pinBad.insert r w
+  let mut pinMass : Std.HashMap String Nat := {}
   let mut uncovered : Array Name := #[]
   let mut forbidden : Array Name := #[]
   let mut mass : Std.HashMap String Nat := {}
@@ -124,23 +178,32 @@ def measureClosure (env : Environment) (args : List String) : IO Measure := do
     let some ci := env.find? n | continue
     if !(match ci with | .defnInfo _ | .opaqueInfo _ => true | _ => false) then continue
     let c := classify env n
-    let cls := if c == "local" then "UNVERIFIED" else if c == "spec" || c == "UNVERIFIED" then (if isExtern env n then "boundary" else c) else c
+    let c0 := if c == "local" then "UNVERIFIED" else if c == "other" then pinClass pins pinBad (rootOf env n).toString else c
+    let cls := if (c0 == "spec" || c0 == "UNVERIFIED") && isExtern env n then "boundary" else c0
     counts := counts.insert cls (counts.getD cls 0 + 1)
     let size := (ci.value?.map (·.sizeWithoutSharing)).getD 0
+    if c == "other" && cls != "boundary" then pinMass := pinMass.insert (rootOf env n).toString (pinMass.getD (rootOf env n).toString 0 + size)
     mass := mass.insert cls (mass.getD cls 0 + size)
     if cls == "proofs" || cls == "heavy" then forbidden := forbidden.push n
-    if cls == "spec" && !mentioned.contains n then uncovered := uncovered.push n
+    if cls == "spec" && c == "spec" && !mentioned.contains n then uncovered := uncovered.push n   -- a pinned library's definitions are covered by ITS clauses, not by our theorems
     if args.contains "--emit" && cls != "spec" then
       IO.println s!"emit {cls} {match env.getModuleIdxFor? n with | some i => (if cls == "toolchain" then (env.header.moduleNames[i.toNat]!).getRoot else env.header.moduleNames[i.toNat]!).toString | none => "?"} {n}"
     if cls == "UNVERIFIED" then
       let m := match env.getModuleIdxFor? n with | some i => (env.header.moduleNames[i.toNat]!).toString | none => "?"
       perModule := perModule.insert m (perModule.getD m 0 + 1)
       perModuleMass := perModuleMass.insert m (perModuleMass.getD m 0 + size)
-  return { entries := entries.length, counts, mass, perModule, perModuleMass, uncovered, forbidden }
+  let locked : Array (String × String × String × Nat × String) := pins.toArray.qsort (fun a b => a.1 < b.1) |>.map fun (r, p) =>
+    let st := if p.status == "ok" && pinBad.contains r then "bad" else p.status
+    (r, st, (pinBad.get? r).getD p.why, pinMass.getD r 0, pinClass pins pinBad r)
+  let unlocked : Array (String × String × String × Nat × String) := (pinMass.toArray.filter fun (r, _) => !pins.contains r).qsort (fun a b => a.1 < b.1) |>.map fun (r, ms) =>
+    (r, "unlocked", "its root is not a line of scripts/pinned-libs.lock", ms, "UNVERIFIED")
+  let pinned := locked ++ unlocked
+  let pinnedMass := pinned.foldl (fun a (_, _, _, ms, cl) => if cl == "spec" then a + ms else a) 0
+  return { entries := entries.length, counts, mass, perModule, perModuleMass, uncovered, forbidden, pinnedMass, pinned }
 
 /-- The report and the ratchet checks of one run against one baseline file (stdout/stderr and the exit code). -/
 def report (m : Measure) (args : List String) (baseFile : String) : IO UInt32 := do
-  let { entries, counts, mass, perModule, perModuleMass, uncovered, forbidden } := m
+  let { entries, counts, mass, perModule, perModuleMass, uncovered, forbidden, pinnedMass, pinned } := m
   let base ← readLines baseFile
   if entries == 0 then IO.println "closure gate: no entry points yet (scripts/closure-entries.txt is empty: the exports arrive with the ABI); measured nothing"
   IO.println "closure gate: definitions reachable from the entry points, by class"
@@ -153,7 +216,10 @@ def report (m : Measure) (args : List String) (baseFile : String) : IO UInt32 :=
   let (sm, em) := shareOf mass
   let floor? := shareFloor base
   IO.println "closure gate: DEFINITIONS: executed mass = expression nodes of every definition reachable from the entry points, classes spec+boundary+UNVERIFIED (toolchain and the C runtime excluded); specified share = spec mass / executed mass"
+  for (r, st, why, pm, cl) in pinned do
+    IO.println s!"closure gate: pinned library {r}: {st}{if st == "ok" then " (rev and spec_hash match scripts/pinned-libs.lock)" else if st == "absent" then " (in the lock, not adopted)" else s!" ({why})"}; reached mass {pm}, counted as {if pm == 0 then "nothing" else cl}{if pm > 0 && cl != "spec" then " (unverified glue: the ratchets fail)" else ""}"
   IO.println s!"closure gate: spec {sm} | boundary {mass.getD "boundary" 0} | unverified {mass.getD "UNVERIFIED" 0} | total {em} | deciding: n/a (the deciding-code detector is not yet ported) | specified share {pct sm em} (floor {match floor? with | some (s0, t0) => pct s0 t0 | none => "none"})"
+  IO.println s!"  (of the spec mass, {pinnedMass} is a verified pinned library's, the rest is LeanSse's)"
   IO.println s!"  specified share = spec mass {sm} / executed mass {em} (spec+boundary+UNVERIFIED; the toolchain's {mass.getD "toolchain" 0} is outside it). Not counted at all: the C runtime (runtime/runtime.c) and the bindings."
   IO.println s!"spec definitions reachable from the entry points that no LeanSseProofs theorem statement mentions: {uncovered.size} of {counts.getD "spec" 0} (spec in name only until a theorem constrains them)"
   for n in uncovered.toList.take 8 do IO.println s!"    {n}"
@@ -178,9 +244,12 @@ def report (m : Measure) (args : List String) (baseFile : String) : IO UInt32 :=
   match baseMap.get? "mass" with
   | some b => if mass.getD "UNVERIFIED" 0 > b then IO.eprintln s!"closure gate: unverified code mass grew from {b} to {mass.getD "UNVERIFIED" 0} expression nodes"; bad := bad + 1
   | none => IO.eprintln s!"closure gate: {baseFile} has no unverified mass line"; bad := bad + 1
+  match baseMap.get? "dep_mass" with
+  | some b => if pinnedMass > b then IO.eprintln s!"closure gate: the pinned libraries' reached mass grew from {b} to {pinnedMass} expression nodes (a new pin, or more of it reached, is a reviewed edit of the baseline)"; bad := bad + 1
+  | none => IO.eprintln s!"closure gate: {baseFile} has no dep_mass line"; bad := bad + 1
   if args.contains "--write" then
     if bad != 0 then IO.eprintln "closure gate: --write refuses to write a baseline that fails the ratchets (a worsening is a deliberate, owner-approved edit of the file)"; return 1
-    IO.FS.writeFile baseFile ("# unverified definitions reachable from the entry points, per module (scripts/ClosureGate.lean); may only fall\n" ++ String.intercalate "\n" (mods.toList.map fun (m, k) => s!"{m} {k}") ++ s!"{if mods.isEmpty then "" else "\n"}mass {mass.getD "UNVERIFIED" 0}\nspecified_share {sm} {em}\n")
+    IO.FS.writeFile baseFile ("# unverified definitions reachable from the entry points, per module (scripts/ClosureGate.lean); may only fall\n" ++ String.intercalate "\n" (mods.toList.map fun (m, k) => s!"{m} {k}") ++ s!"{if mods.isEmpty then "" else "\n"}mass {mass.getD "UNVERIFIED" 0}\ndep_mass {pinnedMass}\nspecified_share {sm} {em}\n")
     IO.println "closure gate: baseline written"
     return 0
   if bad == 0 then
@@ -199,11 +268,11 @@ def selfTests : IO UInt32 := do
   let mut bad := 0
   let mk (spec boundary unv : Nat) (mods : List (String × Nat)) (forb : Array Name := #[]) : Measure :=
     { entries := 1, counts := {}, perModule := Std.HashMap.ofList mods, perModuleMass := {}, uncovered := #[], forbidden := forb
-      mass := Std.HashMap.ofList [("spec", spec), ("boundary", boundary), ("UNVERIFIED", unv), ("toolchain", 50)] }
+      mass := Std.HashMap.ofList [("spec", spec), ("boundary", boundary), ("UNVERIFIED", unv), ("toolchain", 50)], pinnedMass := 30 }
   let m := mk 100 10 5 [("Abi.Shim", 2)]
   let (sm, em) := shareOf m.mass
-  let base (share : List String) (mass : Nat := 5) (mods : List String := ["Abi.Shim 2"]) : IO Unit :=
-    IO.FS.writeFile cb ("\n".intercalate (mods ++ [s!"mass {mass}"] ++ share) ++ "\n")
+  let base (share : List String) (mass : Nat := 5) (mods : List String := ["Abi.Shim 2"]) (dep : List String := ["dep_mass 30"]) : IO Unit :=
+    IO.FS.writeFile cb ("\n".intercalate (mods ++ [s!"mass {mass}"] ++ dep ++ share) ++ "\n")
   let run (mm : Measure) (extra : List String := []) : IO (UInt32 × String) := do
     let (out, r) ← IO.FS.withIsolatedStreams (report mm (["--baseline", cbs] ++ extra) cbs)
     return (r, out)
@@ -222,6 +291,11 @@ def selfTests : IO UInt32 := do
   base [s!"specified_share {sm} {em}"]; let (r, o) ← run m
   expect := expect ++ [(r == 0 && has o s!"specified share {pct sm em} (floor {pct sm em})", "the closure gate fails or does not print the share at its own floor")]
   expect := expect ++ [(has o s!"spec {sm} | boundary 10 | unverified 5 | total {em} | deciding: n/a", "the closure gate prints a bare percentage (the parts are required)")]
+  -- the pinned libraries' reached mass is ratcheted (a grown mass fails; a baseline with no dep_mass line fails)
+  base [s!"specified_share {sm} {em}"] (dep := ["dep_mass 29"]); let (r, o) ← run m
+  expect := expect ++ [(r != 0 && has o "pinned libraries' reached mass grew", "the closure gate accepts a grown pinned-library mass")]
+  base [s!"specified_share {sm} {em}"] (dep := []); let (r, _) ← run m
+  expect := expect ++ [(r != 0, "the closure gate accepts a baseline with no dep_mass line")]
   -- the specified share: a fall fails (a real fall of the spec mass, and a floor above the measure), a missing floor fails
   let (r, _) ← run (mk 99 10 5 [("Abi.Shim", 2)])
   expect := expect ++ [(r != 0, "the specified-share ratchet cannot fail on a synthetic fall of the spec mass")]
@@ -245,8 +319,21 @@ def selfTests : IO UInt32 := do
   expect := expect ++ [(r != 0, "the closure gate accepts a reachable Std/Lean/LeanSseProofs definition")]
   IO.FS.removeFile cb
   -- the classifier, by module root
-  for (mod, c) in [(`LeanSse.Value, "spec"), (`LeanSseProofs.Ledger, "proofs"), (`Init.Prelude, "toolchain"), (`Lean.Data.Json, "heavy"), (`Std.Data.HashMap, "heavy"), (`Abi.Shim, "UNVERIFIED")] do
+  for (mod, c) in [(`LeanSse.Value, "spec"), (`LeanSseProofs.Ledger, "proofs"), (`Init.Prelude, "toolchain"), (`Lean.Data.Json, "heavy"), (`Std.Data.HashMap, "heavy"), (`VbmSimd.Find, "other"), (`VbmSimdProofs.Find, "proofs"), (`Abi.Shim, "other")] do
     expect := expect ++ [(classifyModule mod == c, s!"classifyModule {mod} is not {c}")]
+  -- pinned libraries: a root counts as spec ONLY for a lock line whose verdict is ok and whose oleans are the checkout's; a mismatch, an absent checkout and a library the lock does not name are UNVERIFIED
+  let pin (st : String) : Pin := { root := "LibX", status := st, dir := "/x", why := "" }
+  let pins : Std.HashMap String Pin := ({} : Std.HashMap String Pin).insert "LibX" (pin "ok") |>.insert "LibY" (pin "bad") |>.insert "LibZ" (pin "absent")
+  expect := expect ++ [(pinClass pins {} "LibX" == "spec", "a verified pinned library is not counted as specified"),
+                       (pinClass pins (({} : Std.HashMap String String).insert "LibX" "olean elsewhere") "LibX" == "UNVERIFIED", "a pinned library whose olean is not the locked checkout's counts as specified (a fork under the pinned name)"),
+                       (pinClass pins {} "LibY" == "UNVERIFIED", "a pinned library whose rev or spec_hash does not match counts as specified"),
+                       (pinClass pins {} "LibZ" == "UNVERIFIED", "an absent pinned library counts as specified"),
+                       (pinClass pins {} "NotInTheLock" == "UNVERIFIED", "a library that is not in the lock counts as specified")]
+  -- the olean check of a verified pin: every module of the root must be built under the locked checkout's own build directory (here the root `LeanSse` and this very tree: yes; the same root claimed by another directory: a fork)
+  let here ← pinOleans env { root := "LeanSse", status := "ok", dir := ".", why := "" }
+  let elsewhere ← pinOleans env { root := "LeanSse", status := "ok", dir := "/", why := "" }
+  expect := expect ++ [(here.isNone, "pinOleans refuses the oleans that ARE under the locked checkout's build directory"),
+                       (elsewhere.isSome, "pinOleans accepts oleans that are NOT under the locked checkout's build directory (a fork under the pinned name)")]
   -- the walk on the real environment: a toolchain function is measured (and is not heavy), a Lean.Json function IS heavy, a proof-library function is "proofs",
   -- an entry point that does not exist is an error (so the empty closure of the skeleton cannot hide a typo)
   let mT ← measureClosure env ["--entry", "List.map", "--entries-file", "/nonexistent"]

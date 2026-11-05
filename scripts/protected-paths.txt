@@ -44,6 +44,10 @@ scripts/closure-entries.txt
 scripts/ledger-baseline.txt
 scripts/ledger-bridges.txt
 scripts/lint-pipefail.sh
+# The pinned libraries: the lock that decides which outside code is the library we depend on, the tool that checks it and its test
+scripts/pinned-libs.lock
+scripts/pinned-lib.py
+scripts/test_pinned_lib.sh
 scripts/lint-proof-eval.sh
 scripts/proof-eval-allow.txt
 scripts/protected-paths.txt

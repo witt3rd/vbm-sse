@@ -40,15 +40,16 @@ echo "-- a comment that says sorry -- tier1-allow" > "$st"; [ -z "$(forbidden "$
 echo "-- a comment that says sorry" > "$st"; [ -n "$(forbidden "$st")" ] || { echo "tier1: an unmarked comment is not flagged" >&2; exit 1; }
 echo "tier1: forbidden-constructs scan: negative self-tests ok (each forbidden word is flagged, the tier1-allow marker is honoured)"
 
-# 1a. LeanSse/ imports Init only (implicitly) and other LeanSse modules: no Std, no Lean, no LeanSseProofs, no `prelude`, nothing else. A Lean.* import in the
+# 1a. LeanSse/ imports Init only (implicitly), other LeanSse modules and the pinned verified library VbmSimd (scripts/pinned-libs.lock; never VbmSimdProofs): no Std, no Lean, no LeanSseProofs, no `prelude`, nothing else. A Lean.* import in the
 # library's closure forces the full runtime initialisation (docs/decisions/0001-vbm-sse.md); the proofs library is never linked.
-bad_imports() { grep -HnE '^[[:space:]]*((public|meta|private)[[:space:]]+)*(import|prelude)\b' "$@" | grep -vE ':[0-9]+:import LeanSse(\.[A-Za-z0-9_]+)*[[:space:]]*$' || true; }
+bad_imports() { grep -HnE '^[[:space:]]*((public|meta|private)[[:space:]]+)*(import|prelude)\b' "$@" | grep -vE ':[0-9]+:import (LeanSse|VbmSimd)(\.[A-Za-z0-9_]+)*[[:space:]]*$' || true; }
 bad=$(bad_imports $(find LeanSse -name '*.lean') LeanSse.lean)
 if [ -n "$bad" ]; then echo "tier1: LeanSse may import only LeanSse modules (Init is implicit):" >&2; echo "$bad" >&2; exit 1; fi
-for imp in 'import Lean' 'import Std.Data.HashMap' 'import LeanSseProofs.Ledger' 'prelude' 'public import Lean.Data.Json' 'import LeanSseX'; do
+for imp in 'import Lean' 'import Std.Data.HashMap' 'import LeanSseProofs.Ledger' 'prelude' 'public import Lean.Data.Json' 'import LeanSseX' 'import VbmSimdProofs.Find' 'import VbmSimdX'; do
   printf '%s\n' "$imp" > "$st"; [ -n "$(bad_imports "$st")" ] || { echo "tier1: the Init-only import scan does not flag: $imp" >&2; exit 1; }
 done
 printf 'import LeanSse.Value\n' > "$st"; [ -z "$(bad_imports "$st")" ] || { echo "tier1: the Init-only import scan flags a LeanSse import" >&2; exit 1; }
+printf 'import VbmSimd.Find\n' > "$st"; [ -z "$(bad_imports "$st")" ] || { echo "tier1: the import scan flags an import of the pinned library VbmSimd" >&2; exit 1; }
 echo "tier1: Init-only import scan: negative self-tests ok (each non-Init import is flagged)"
 
 # 1b. Pipefail-unsafe pipelines (an early-exiting consumer) are flaky by construction; the lint has a negative self-test.
@@ -59,6 +60,11 @@ scripts/lint-scoped-runners.sh --selftest
 # 1c. Proofs by evaluation over big data (decide +kernel, native_decide, rfl/decide over a literal past the bound) overflowed the independent checker once; the lint
 # has fixture self-tests (each banned pattern, just-under-the-bound, allowlist expiry), run here with `--selftest`.
 scripts/lint-proof-eval.sh --selftest
+
+# 1d. Pinned libraries (docs/decisions/0005-pinned-library.md): every package of the lake manifest is a line of the protected lock scripts/pinned-libs.lock, and every adopted one is exactly what the lock says (rev, checkout, spec hash).
+scripts/pinned-lib.py fetch
+scripts/pinned-lib.py verify
+scripts/pinned-lib.py protected
 
 # 2. Build both libraries; warningAsError is set in lakefile.lean, so any warning fails. The mechanism is checked: the option is set, and a file with a warning fails under it.
 grep -q 'warningAsError, true' lakefile.lean || { echo "tier1: lakefile.lean does not set warningAsError" >&2; exit 1; }
@@ -103,6 +109,8 @@ python3 scripts/lint-workflows.py
 par scripts/test_lint_workflows.sh
 
 # 3. The process scripts, offline, in scratch repos.
+# 3a'. The pinned-library gate can fail: a stale rev, an edited spec file, a fork, an unlocked package, an edited or malformed lock each fail it.
+par scripts/test_pinned_lib.sh
 # 3a. The protected set (scripts/protected-paths.txt, read by scripts/protected-set.sh): every class fails a fixture diff, a docs-only diff passes.
 par scripts/test_protected_set.sh
 # 3b. scripts/land-direct: lands direct to main (no PR, no force); a worsening baseline, a code conflict, a failing Tier 1, a hold and a red main stop; a second lander waits (local bare remote, gh shim).

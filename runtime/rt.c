@@ -196,6 +196,12 @@ lean_object *lean_obj_once_cold(lean_object **loc, lean_once_cell_t *tok, lean_o
   return *loc;
 }
 
+/* A closed Bool, evaluated once (the CPU test of vbm-simd's `hasAvx2 ()`): same single-threaded cell as the object one above. */
+uint8_t lean_uint8_once_cold(uint8_t *loc, lean_once_cell_t *tok, uint8_t (*init)(void)) {
+  if (tok->state == 0) { *loc = init(); tok->state = 1; }
+  return *loc;
+}
+
 /* `Char.ofNat n` (Init; n borrowed): n itself when it is a Unicode scalar value, else 0. */
 uint32_t l_Char_ofNat(lean_object *n) {
   if (!lean_is_scalar(n)) return 0;

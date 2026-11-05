@@ -22,3 +22,4 @@ scripts/test_ran_evidence.sh: scripts/lib-ran.sh scripts/ran-evidence.sh scripts
 scripts/test_run_scoped.sh: scripts/run-scoped.sh
 scripts/test_reap.sh: scripts/test_reap.sh
 scripts/test_bench.sh: bench/ scripts/test_bench.sh
+scripts/test_pinned_lib.sh: scripts/pinned-lib.py scripts/pinned-libs.lock scripts/attacks/pin-check.sh

@@ -29,13 +29,16 @@ mut() {
   git reset -q --hard "$base"
 }
 num() { sed -i -E "$1" "$2"; }
-grep -q '^mass ' scripts/closure-baseline.txt && grep -q '^specified_share ' scripts/closure-baseline.txt && grep -q '^proved ' scripts/ledger-baseline.txt && ran_case || fail "the real baselines no longer have the keys this self-test mutates: update it"
+grep -q '^mass ' scripts/closure-baseline.txt && grep -q '^dep_mass ' scripts/closure-baseline.txt && grep -q '^specified_share ' scripts/closure-baseline.txt && grep -q '^proved ' scripts/ledger-baseline.txt && ran_case || fail "the real baselines no longer have the keys this self-test mutates: update it"
 mut "no change"                 pass ""                       true
 mut "unrelated file"            pass ""                       eval 'echo x >> docs/other.md'
 mut "mass raised"               fail "mass"                   num 's/^mass ([0-9]+)/echo "mass $((\1+1))"/e' scripts/closure-baseline.txt
 mut "unverified module raised"  fail "LeanSse.Mod"           num 's/^(LeanSse.Mod) 3/\1 4/' scripts/closure-baseline.txt
 mut "unverified module lowered" pass "closure-baseline"       num 's/^(LeanSse.Mod) 3/\1 2/' scripts/closure-baseline.txt
 mut "new unverified module"     fail "LeanSse.New"           eval 'echo "LeanSse.New 1" >> scripts/closure-baseline.txt'
+mut "pinned-library mass raised" fail "dep_mass"             num 's/^dep_mass ([0-9]+)/echo "dep_mass $((\1+1))"/e' scripts/closure-baseline.txt
+mut "pinned-library mass lowered" pass "closure-baseline"     num 's/^dep_mass ([0-9]+)/echo "dep_mass $((\1-1))"/e' scripts/closure-baseline.txt
+mut "pinned-library mass key removed" fail "removed"          num '/^dep_mass /d' scripts/closure-baseline.txt
 mut "mass key removed"          fail "removed"                num '/^mass /d' scripts/closure-baseline.txt
 mut "specified share fell"      fail "specified_share"        num 's/^specified_share ([0-9]+) /specified_share 1 /' scripts/closure-baseline.txt
 mut "specified share rose"      pass "closure-baseline"       num 's/^specified_share ([0-9]+) ([0-9]+)/echo "specified_share $((\1+1)) \2"/e' scripts/closure-baseline.txt
@@ -115,11 +118,15 @@ mut_ap "no list: specified share fell"      fail "specified_share"   none       
 mut_ap "empty list: specified share fell"   fail "specified_share"   empty                 scripts/closure-baseline.txt eval "$share_fall"
 mut_ap "share: a hash of another diff"      fail "specified_share"   'scripts/closure-baseline.txt 0000000000000000000000000000000000000000000000000000000000000000' scripts/closure-baseline.txt eval "$share_fall"
 mut_ap "share: another file's hash"         fail "specified_share"   'scripts/closure-baseline.txt %s' scripts/tier1.sh eval "$share_fall"
+# a base that does not carry the dep_mass row yet (the landing that introduces it): the row appears, 0 -> N, and only an approval lets it
+base_full=$base; sed -i '/^dep_mass /d' scripts/closure-baseline.txt; git add -A; git commit -qm "a base without the dep_mass row" --allow-empty; base=$(git rev-parse HEAD)
 dep_new='sed -i "/^dep_mass /d" scripts/closure-baseline.txt; echo "dep_mass 3122" >> scripts/closure-baseline.txt'
 mut_ap "approved: the dep_mass row appears (and the share falls)" pass "APPROVED" 'scripts/closure-baseline.txt %s' scripts/closure-baseline.txt eval "$share_fall; $dep_new"
 mut_ap "no approval: the dep_mass row appears"  fail "dep_mass"  none                  scripts/closure-baseline.txt eval "$dep_new"
+git reset -q --hard "$base_full"; base=$base_full
 mut_ap "baseline: approval does not relax a mass"  fail "mass"       'scripts/closure-baseline.txt %s' scripts/closure-baseline.txt num 's/^mass ([0-9]+)/echo "mass $((\1+1))"/e' scripts/closure-baseline.txt
 mut_ap "baseline: approval does not relax mass beside a share fall" fail "mass" 'scripts/closure-baseline.txt %s' scripts/closure-baseline.txt eval "$share_fall; sed -i -E 's/^mass ([0-9]+)/echo \"mass \$((\1+1))\"/e' scripts/closure-baseline.txt"
+mut_ap "approval: a rise of an existing dep_mass is not relaxed" fail "dep_mass" 'scripts/closure-baseline.txt %s' scripts/closure-baseline.txt num 's/^dep_mass ([0-9]+)/echo "dep_mass $((\1+1))"/e' scripts/closure-baseline.txt
 mut_ap "tests-map: approval does not relax"  fail "lost"             'scripts/tests-map.txt %s' scripts/tests-map.txt num 's# scripts/tier1.sh##' scripts/tests-map.txt
 mut_ap "list of gate source: not relaxed"    fail "owner"            'scripts/closure-entries.txt %s' scripts/closure-entries.txt eval 'echo x >> scripts/closure-entries.txt'
 # the bound itself: a judge that never finishes is killed and reported (exit 2, a clear line), not waited for

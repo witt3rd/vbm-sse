@@ -44,10 +44,10 @@ RULES = {
  "scripts/closure-baseline.txt": [(r"LeanSse\S*", {"f0": "down"}, True), (r"mass", {"f0": "down"}, False), (r"dep_mass", {"f0": "down"}, False), (r"specified_share", {"f0": "ratio", "f1": "ratio"}, False)],
  "scripts/ledger-baseline.txt":  [(r"proved", {"f0": "up"}, False), (r"open", {"f0": "down"}, False), (r"total", {"f0": "up"}, False)],
 }
-LISTS = ["scripts/closure-entries.txt", "scripts/ledger-bridges.txt", "scripts/proof-eval-allow.txt", "scripts/protected-paths.txt", "scripts/generated-paths.txt", "mutants-equivalent.txt",
+LISTS = ["scripts/closure-entries.txt", "scripts/ledger-bridges.txt", "scripts/proof-eval-allow.txt", "scripts/protected-paths.txt", "scripts/generated-paths.txt", "mutants-equivalent.txt", "scripts/pinned-libs.lock",
          "scripts/protected-set.sh"]
 SOURCE = ["scripts/ClosureGate.lean", "scripts/LedgerGate.lean", "scripts/AxiomGate.lean", "scripts/land-direct", "scripts/regen-baselines.sh", "scripts/tier2.sh", "scripts/gate-diff-improving.sh",
-          "scripts/trust-ledger-check.sh", "scripts/trust_ledger.py", "scripts/relabel-attacks.sh", "scripts/lint-pipefail.sh", "scripts/lint-proof-eval.sh", "scripts/select-tests.py",
+          "scripts/trust-ledger-check.sh", "scripts/trust_ledger.py", "scripts/pinned-lib.py", "scripts/relabel-attacks.sh", "scripts/lint-pipefail.sh", "scripts/lint-proof-eval.sh", "scripts/select-tests.py",
           "scripts/run-tests-parallel.sh", "scripts/land.conf", "scripts/lib-no-crash-record.sh", "scripts/lint-workflows.py", "scripts/git-hermetic.sh", "scripts/wt"]
 SOURCE_DIRS = ["scripts/attacks/", "scripts/githooks/", "scripts/land/", "scripts/land.d/"]   # the attack files, the commit hook, the pinned lander and its hooks are gate source too
 out, bad = [], 0

@@ -23,6 +23,8 @@ files() { git ls-files --cached --others --exclude-standard "$@"; }   # a file n
   [ -f lean-toolchain ] && printf '%s\n' lean-compiler lean-runtime clang-lld || true
   # closure modules that are neither spec nor toolchain (none yet: the closure is empty)
   lake env lean --run scripts/ClosureGate.lean --emit | awk '$1=="emit" && $2!="toolchain"{ print "module:" $3 }' | sort -u
+  # the pinned libraries (scripts/pinned-lib.py): one key per line of the protected lock, adopted or not
+  python3 scripts/pinned-lib.py names | sed 's/^/pin:/'
   # tools run as processes: a fixed watch-list found in scripts/ and the build file
   [ -f scripts/trust_ledger.py ] && echo tool:python3 || true   # the checker itself (excluded from the grep below: it names every watch-listed tool)
   for t in git gh mise wt flock lake leanc leanchecker nanoda node cargo; do

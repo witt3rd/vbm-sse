@@ -1,3 +1,5 @@
 # unverified definitions reachable from the entry points, per module (scripts/ClosureGate.lean); may only fall
+# TARGET of the specified_share floor below: the trusted boundary is exactly 36 expression nodes = the four extern shims of the pinned vbm-simd (findAvx2, hasAvx2, ld64, ctz; docs/trust-ledger.md T13 says why each stays trusted). The floor is an exact fraction: more boundary without more spec lowers the share below it and fails.
 mass 0
-specified_share 5256 5256
+dep_mass 3122
+specified_share 11537 11573

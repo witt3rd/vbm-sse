@@ -1,6 +1,8 @@
 import Lake
 open System Lake DSL
 
+require «vbm-simd» from git "https://github.com/witt3rd/vbm-simd" @ "9c274830d5463169fc8848b5cbf3538cb75c1c4b"
+
 package «vbm-sse» where
   leanOptions := #[⟨`warningAsError, true⟩, ⟨`autoImplicit, false⟩]
 
