@@ -19,3 +19,5 @@ scripts/test_native.sh: abi/ runtime/ include/ tests/ scripts/build_native.sh sc
 scripts/test_wasm.sh: abi/ runtime/ include/ tests/ scripts/build_wasm.sh vectors/ LeanSse/ LeanSse.lean
 scripts/test_bindings.sh: abi/ bindings/ include/ runtime/ tests/ scripts/gen_bindings.py scripts/gen-bindings.sh scripts/build_shared.sh scripts/build_native.sh vectors/ LeanSse/ LeanSse.lean
 scripts/test_ran_evidence.sh: scripts/lib-ran.sh scripts/ran-evidence.sh scripts/check-zero-warning.sh scripts/run-tests-parallel.sh
+scripts/test_run_scoped.sh: scripts/run-scoped.sh
+scripts/test_reap.sh: scripts/test_reap.sh
