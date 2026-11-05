@@ -138,11 +138,57 @@ decreasing_by
   rw [USize.toNat_add, USize.toNat_one, ← h3, Nat.mod_eq_of_lt (by omega)]
   omega
 
+/-- A machine word holds more than 16 values (32 or 64 bits). -/
+theorem usize_size_gt : 16 < USize.size := by
+  have := USize.size_eq
+  omega
+
+/-- One more than an index below a word's bound does not wrap. -/
+theorem usize_add_one (i n : USize) (h : i.toNat < n.toNat) : (i + 1).toNat = i.toNat + 1 := by
+  have h3 : USize.size = 2 ^ System.Platform.numBits := rfl
+  have := USize.toNat_lt_size n
+  rw [USize.toNat_add, USize.toNat_one, ← h3, Nat.mod_eq_of_lt (by omega)]
+
+/-- The guard of a step of eight: eight bytes remain at `i`. -/
+theorem usize_eight (n i : USize) (h : (8 : USize) ≤ n ∧ i ≤ n - 8) : i.toNat + 8 ≤ n.toNat := by
+  have g := usize_size_gt
+  have e8 : (8 : USize).toNat = 8 := by
+    show (USize.ofNat 8).toNat = 8
+    simp; exact Nat.mod_eq_of_lt (show 8 < USize.size by omega)
+  have h1 := USize.le_iff_toNat_le.mp h.1
+  have h2 := USize.le_iff_toNat_le.mp h.2
+  rw [USize.toNat_sub_of_le _ _ h.1, e8] at h2
+  omega
+
+/-- 1 for a line end, else 0 (a byte in a branch-free sum: eight bytes are tested at once). -/
+def eolB (b : UInt8) : UInt8 := if b == LF || b == CR then 1 else 0
+
+/-- `scanU`, eight bytes a step while eight remain (a step with no line end among its eight bytes skips them all; any other step is `scanU`'s). -/
+def scanU8 (c : ByteArray) (n : USize) (hn : n.toNat = c.size) (i : USize) : USize :=
+  if h : (8 : USize) ≤ n ∧ i ≤ n - 8 then
+    have h8 := usize_eight n i h
+    have a1 : (i + 1).toNat = i.toNat + 1 := usize_add_one i n (by omega)
+    have a2 : (i + 1 + 1).toNat = i.toNat + 2 := by rw [usize_add_one _ n (by omega), a1]
+    have a3 : (i + 1 + 1 + 1).toNat = i.toNat + 3 := by rw [usize_add_one _ n (by omega), a2]
+    have a4 : (i + 1 + 1 + 1 + 1).toNat = i.toNat + 4 := by rw [usize_add_one _ n (by omega), a3]
+    have a5 : (i + 1 + 1 + 1 + 1 + 1).toNat = i.toNat + 5 := by rw [usize_add_one _ n (by omega), a4]
+    have a6 : (i + 1 + 1 + 1 + 1 + 1 + 1).toNat = i.toNat + 6 := by rw [usize_add_one _ n (by omega), a5]
+    have a7 : (i + 1 + 1 + 1 + 1 + 1 + 1 + 1).toNat = i.toNat + 7 := by rw [usize_add_one _ n (by omega), a6]
+    have a8 : (i + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1).toNat = i.toNat + 8 := by rw [usize_add_one _ n (by omega), a7]
+    if eolB (c.uget i (by omega)) ||| eolB (c.uget (i + 1) (by omega)) ||| eolB (c.uget (i + 1 + 1) (by omega)) ||| eolB (c.uget (i + 1 + 1 + 1) (by omega))
+        ||| eolB (c.uget (i + 1 + 1 + 1 + 1) (by omega)) ||| eolB (c.uget (i + 1 + 1 + 1 + 1 + 1) (by omega)) ||| eolB (c.uget (i + 1 + 1 + 1 + 1 + 1 + 1) (by omega))
+        ||| eolB (c.uget (i + 1 + 1 + 1 + 1 + 1 + 1 + 1) (by omega)) == 0
+    then scanU8 c n hn (i + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1) else scanU c n hn i
+  else scanU c n hn i
+termination_by n.toNat - i.toNat
+decreasing_by omega
+
+
 /-- `scanEol`, by words when the size of the array is a word (it always is: an array has fewer than `USize.size` elements in the runtime). -/
 def scanFast (c : ByteArray) (i : Nat) : Nat :=
   let n := c.usize
   if hn : n.toNat = c.size then
-    (if i < c.size then (scanU c n hn i.toUSize).toNat else c.size)
+    (if i < c.size then (scanU8 c n hn i.toUSize).toNat else c.size)
   else scanEol c i
 
 /-- Index of the first colon of `c` in `[i, j)` (`j` if none). -/
@@ -152,7 +198,7 @@ termination_by j - i
 
 /-- Is the name `c[i, k)` the field name `data`? (four byte tests, nothing built) -/
 def isDataAt (c : ByteArray) (i k : Nat) : Bool :=
-  if h : i + 3 < k ∧ k = i + 4 ∧ k ≤ c.size then c[i] == 100 && c[i + 1] == 97 && c[i + 2] == 116 && c[i + 3] == 97 else false
+  if h : k = i + 4 ∧ k ≤ c.size then c[i] == 100 && c[i + 1] == 97 && c[i + 2] == 116 && c[i + 3] == 97 else false
 
 /-- `applyField` on a line that is still in the chunk: the name is `c[i, k)`, the value is `c[s, j)`. A `data` line appends its value to the data buffer in one copy; any other field builds its name and value. -/
 def applyFieldS (p : FProc) (c : ByteArray) (i k s j : Nat) : FProc :=

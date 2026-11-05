@@ -338,6 +338,34 @@ theorem scanU_eq (c : ByteArray) (n : USize) (hn : n.toNat = c.size) (i : USize)
     simp [h, h1, hn]
     omega
 
+theorem eolB_eq_zero (b : UInt8) : eolB b = 0 ↔ ¬ (b == LF || b == CR) = true := by
+  unfold eolB; split <;> simp_all
+
+theorem scanU_step (c : ByteArray) (n : USize) (hn : n.toNat = c.size) (i : USize) (h : i < n)
+    (hb : ¬ (c.uget i (by rw [USize.lt_iff_toNat_lt] at h; omega) == LF || c.uget i (by rw [USize.lt_iff_toNat_lt] at h; omega) == CR) = true) :
+    scanU c n hn i = scanU c n hn (i + 1) := by
+  rw [scanU]; simp only [h, ↓reduceDIte, hb, Bool.false_eq_true, ↓reduceIte]
+
+theorem scanU8_eq (c : ByteArray) (n : USize) (hn : n.toNat = c.size) (i : USize) : scanU8 c n hn i = scanU c n hn i := by
+  induction i using scanU8.induct c n hn with
+  | case1 i h h8 a1 a2 a3 a4 a5 a6 a7 a8 hz ih =>
+    rw [scanU8]; simp only [h, and_self, ↓reduceDIte, hz, ↓reduceIte]
+    simp only [beq_iff_eq, UInt8.or_eq_zero_iff, eolB_eq_zero] at hz
+    obtain ⟨⟨⟨⟨⟨⟨⟨z0, z1⟩, z2⟩, z3⟩, z4⟩, z5⟩, z6⟩, z7⟩ := hz
+    have l0 : i < n := USize.lt_iff_toNat_lt.mpr (by omega)
+    have l1 : i + 1 < n := USize.lt_iff_toNat_lt.mpr (by omega)
+    have l2 : i + 1 + 1 < n := USize.lt_iff_toNat_lt.mpr (by omega)
+    have l3 : i + 1 + 1 + 1 < n := USize.lt_iff_toNat_lt.mpr (by omega)
+    have l4 : i + 1 + 1 + 1 + 1 < n := USize.lt_iff_toNat_lt.mpr (by omega)
+    have l5 : i + 1 + 1 + 1 + 1 + 1 < n := USize.lt_iff_toNat_lt.mpr (by omega)
+    have l6 : i + 1 + 1 + 1 + 1 + 1 + 1 < n := USize.lt_iff_toNat_lt.mpr (by omega)
+    have l7 : i + 1 + 1 + 1 + 1 + 1 + 1 + 1 < n := USize.lt_iff_toNat_lt.mpr (by omega)
+    rw [ih, scanU_step c n hn i l0 z0, scanU_step c n hn (i + 1) l1 z1, scanU_step c n hn (i + 1 + 1) l2 z2, scanU_step c n hn (i + 1 + 1 + 1) l3 z3,
+      scanU_step c n hn (i + 1 + 1 + 1 + 1) l4 z4, scanU_step c n hn (i + 1 + 1 + 1 + 1 + 1) l5 z5, scanU_step c n hn (i + 1 + 1 + 1 + 1 + 1 + 1) l6 z6,
+      scanU_step c n hn (i + 1 + 1 + 1 + 1 + 1 + 1 + 1) l7 z7]
+  | case2 i h h8 a1 a2 a3 a4 a5 a6 a7 a8 hz => rw [scanU8]; simp only [h, and_self, ↓reduceDIte, hz]; simp
+  | case3 i h => rw [scanU8]; simp only [h, ↓reduceDIte]
+
 theorem scanFast_eq (c : ByteArray) (i : Nat) : scanFast c i = scanEol c i := by
   unfold scanFast
   by_cases hn : c.usize.toNat = c.size
@@ -347,7 +375,7 @@ theorem scanFast_eq (c : ByteArray) (i : Nat) : scanFast c i = scanEol c i := by
         have hlt : i < USize.size := by have := USize.toNat_lt_size c.usize; omega
         simpa [Nat.toUSize, USize.toNat_ofNat] using Nat.mod_eq_of_lt hlt
       simp only [hi, ↓reduceIte]
-      rw [scanU_eq, this]
+      rw [scanU8_eq, scanU_eq, this]
     · rw [scanEol]; simp [hi]
   · simp only [hn, ↓reduceDIte]
 
@@ -445,7 +473,7 @@ theorem isDataAt_eq (c : ByteArray) (i k : Nat) (h : isDataAt c i k = true) : c.
   · rename_i hc
     simp only [Bool.and_eq_true, beq_iff_eq] at h
     obtain ⟨⟨⟨h0, h1⟩, h2⟩, h3⟩ := h
-    obtain ⟨_, hk, hks⟩ := hc
+    obtain ⟨hk, hks⟩ := hc
     subst hk
     apply ByteArray.ext_getElem
     · rw [ByteArray.size_extract]; simp [fDataB]; omega
