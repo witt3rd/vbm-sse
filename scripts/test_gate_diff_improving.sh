@@ -83,6 +83,45 @@ unset GDI_FLAGS
 for shape in "$(printf 'a%.0s' $(seq 1 6000))!" "$(printf '$a%.0s' $(seq 1 3000))!" "$(printf 'ab=1 %.0s' $(seq 1 1500))!" "$(printf '"x" %.0s' $(seq 1 1500))!"; do
   GDI_TIMEOUT=20 GDI_FLAGS=--suite-judged mut "long line ${shape:0:12}..." fail "not a plain step" tier1_add "$shape"
 done
+# GATE-EDIT APPROVALS: the lander hands over the approvals a landing consumes ($LAND_GATE_APPROVED_FILE, `FILE HASH`); the judge relaxes scripts/tier1.sh's removed/changed lines for the exact diff, and the fall of the
+# specified_share row of scripts/closure-baseline.txt for the exact diff, and nothing else (no other baseline row, no list, no gate source, no other file)
+. "$root/scripts/land/lib/approvals.sh"
+LIST=$T/approved.txt
+mut_ap() {   # mut_ap NAME want needle LISTSPEC FILE_FOR_HASH CMD...: LISTSPEC is a printf format with %s for the true hash of FILE_FOR_HASH's diff ("none": no list at all, "empty": an empty list)
+  local name=$1 want=$2 needle=$3 spec=$4 hf=$5; shift 5
+  "$@"; git add -A; git commit -qm "$name" --allow-empty
+  local h; h=$(ga_hash . "$base" HEAD "$hf" || true); : > "$LIST"
+  case $spec in none) unset LAND_GATE_APPROVED_FILE;; empty) export LAND_GATE_APPROVED_FILE=$LIST;; missing) export LAND_GATE_APPROVED_FILE=$T/nope;; *) printf "$spec\n" "$h" > "$LIST"; export LAND_GATE_APPROVED_FILE=$LIST;; esac
+  out=$("$gate" ${GDI_FLAGS:-} "$base" HEAD 2>&1) && rc=0 || rc=$?
+  unset LAND_GATE_APPROVED_FILE
+  if [ "$want" = pass ]; then [ "$rc" = 0 ] && grep -qx PASS <<<"$out" && ran_case || fail "$name: an approved change was refused ($out)"
+  else [ "$rc" = 1 ] && grep -qx FAIL <<<"$out" && ran_case || fail "$name: expected FAIL, got rc=$rc ($out)"; fi
+  if [ -n "$needle" ] && ! grep -qF -- "$needle" <<<"$out"; then fail "$name: '$needle' not in the output ($out)"; fi
+  git reset -q --hard "$base"
+}
+rm_t1='sed -i "/^scripts\/lint-pipefail.sh/d" scripts/tier1.sh'
+share_fall='sed -i -E "s/^specified_share ([0-9]+) ([0-9]+)/specified_share 1 \2/" scripts/closure-baseline.txt'
+mut_ap "approved: tier1 line removed"       pass "APPROVED"          'scripts/tier1.sh %s' scripts/tier1.sh eval "$rm_t1"
+mut_ap "approved: tier1 line changed"       pass "APPROVED"          'scripts/tier1.sh %s' scripts/tier1.sh eval 'sed -i "s/^scripts\/lint-pipefail.sh/scripts\/lint-pipefail.sh x/" scripts/tier1.sh'
+mut_ap "no list: tier1 removal"             fail "removed/changed"   none                  scripts/tier1.sh eval "$rm_t1"
+mut_ap "empty list"                         fail "removed/changed"   empty                 scripts/tier1.sh eval "$rm_t1"
+mut_ap "missing list file"                  fail "removed/changed"   missing               scripts/tier1.sh eval "$rm_t1"
+mut_ap "a hash of another diff"             fail "removed/changed"   'scripts/tier1.sh 0000000000000000000000000000000000000000000000000000000000000000' scripts/tier1.sh eval "$rm_t1"
+mut_ap "a hash prefix is no approval"       fail "removed/changed"   'scripts/tier1.sh %.12s' scripts/tier1.sh eval "$rm_t1"
+mut_ap "another file named in the list"     fail "removed/changed"   'scripts/tier1.sh2 %s'  scripts/tier1.sh eval "$rm_t1"
+mut_ap "a field more on the line"           fail "removed/changed"   'scripts/tier1.sh %s x' scripts/tier1.sh eval "$rm_t1"
+mut_ap "approved: specified share fell"     pass "APPROVED"          'scripts/closure-baseline.txt %s' scripts/closure-baseline.txt eval "$share_fall"
+mut_ap "no list: specified share fell"      fail "specified_share"   none                  scripts/closure-baseline.txt eval "$share_fall"
+mut_ap "empty list: specified share fell"   fail "specified_share"   empty                 scripts/closure-baseline.txt eval "$share_fall"
+mut_ap "share: a hash of another diff"      fail "specified_share"   'scripts/closure-baseline.txt 0000000000000000000000000000000000000000000000000000000000000000' scripts/closure-baseline.txt eval "$share_fall"
+mut_ap "share: another file's hash"         fail "specified_share"   'scripts/closure-baseline.txt %s' scripts/tier1.sh eval "$share_fall"
+dep_new='sed -i "/^dep_mass /d" scripts/closure-baseline.txt; echo "dep_mass 3122" >> scripts/closure-baseline.txt'
+mut_ap "approved: the dep_mass row appears (and the share falls)" pass "APPROVED" 'scripts/closure-baseline.txt %s' scripts/closure-baseline.txt eval "$share_fall; $dep_new"
+mut_ap "no approval: the dep_mass row appears"  fail "dep_mass"  none                  scripts/closure-baseline.txt eval "$dep_new"
+mut_ap "baseline: approval does not relax a mass"  fail "mass"       'scripts/closure-baseline.txt %s' scripts/closure-baseline.txt num 's/^mass ([0-9]+)/echo "mass $((\1+1))"/e' scripts/closure-baseline.txt
+mut_ap "baseline: approval does not relax mass beside a share fall" fail "mass" 'scripts/closure-baseline.txt %s' scripts/closure-baseline.txt eval "$share_fall; sed -i -E 's/^mass ([0-9]+)/echo \"mass \$((\1+1))\"/e' scripts/closure-baseline.txt"
+mut_ap "tests-map: approval does not relax"  fail "lost"             'scripts/tests-map.txt %s' scripts/tests-map.txt num 's# scripts/tier1.sh##' scripts/tests-map.txt
+mut_ap "list of gate source: not relaxed"    fail "owner"            'scripts/closure-entries.txt %s' scripts/closure-entries.txt eval 'echo x >> scripts/closure-entries.txt'
 # the bound itself: a judge that never finishes is killed and reported (exit 2, a clear line), not waited for
 mkdir -p "$T/slow"; printf '#!/bin/sh\nexec sleep 60\n' > "$T/slow/python3"; chmod +x "$T/slow/python3"
 git reset -q --hard "$base"; echo x >> docs/other.md; git add -A; git commit -qm slow

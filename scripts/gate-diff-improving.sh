@@ -6,6 +6,9 @@
 #   NUMERIC BASELINES: every key moves only in its improving direction (table RULES below; an unknown key or field FAILS; a baseline that appears or disappears FAILS).
 #   scripts/tier1.sh:  may only GAIN lines: a removed or changed line FAILS, so does an added line that weakens (|| true, exit 0, set +e, if false, ...) or that joins
 #                      onto an existing line (a trailing backslash / && / || / |, or an added line that continues the one above).
+#   GATE-EDIT APPROVALS: a landing that consumes an exact-diff approval ($LAND_GATE_APPROVED_FILE, set by the lander; the hash is recomputed here) relaxes (a) scripts/tier1.sh's removed/changed lines and (b)
+#                      ONLY the fall of the `specified_share` row of scripts/closure-baseline.txt and the first appearance of its `dep_mass` row (the pinned-library mass ratchet, 0 -> N); every other baseline row (and a later rise of
+#                      `dep_mass`), every list and every gate source is never relaxed by an approval.
 #   Generated files (docs/proof-ledger.md): accepted only when the ledger baseline moved improving, or (counts unchanged) when its render source LeanSseProofs/Ledger.lean changed
 #                      (the ledger is owner-gated by protected-set.sh).
 #   scripts/tests-map.txt (which tests a changed file selects): may only select more; `none:` gains only documentation.
@@ -38,7 +41,7 @@ def show(ref, p): return git("show", f"{ref}:{p}", check=False)
 # (a new unverified module or a new allocation is a raise); a key that is not `removable` may not disappear (a target, or coverage of a function/module).
 D = lambda *n: {k: "down" for k in n}
 RULES = {
- "scripts/closure-baseline.txt": [(r"LeanSse\S*", {"f0": "down"}, True), (r"mass", {"f0": "down"}, False), (r"specified_share", {"f0": "ratio", "f1": "ratio"}, False)],
+ "scripts/closure-baseline.txt": [(r"LeanSse\S*", {"f0": "down"}, True), (r"mass", {"f0": "down"}, False), (r"dep_mass", {"f0": "down"}, False), (r"specified_share", {"f0": "ratio", "f1": "ratio"}, False)],
  "scripts/ledger-baseline.txt":  [(r"proved", {"f0": "up"}, False), (r"open", {"f0": "down"}, False), (r"total", {"f0": "up"}, False)],
 }
 LISTS = ["scripts/closure-entries.txt", "scripts/ledger-bridges.txt", "scripts/proof-eval-allow.txt", "scripts/protected-paths.txt", "scripts/generated-paths.txt", "mutants-equivalent.txt",
@@ -87,6 +90,8 @@ def baseline(p):
                     if s1 * t0 < s0 * t1: why.append(f"'{k}' fell {s0}/{t0} -> {s1}/{t1}: -{old[k][0]} +{line}")
             elif (r == "down" and b > a) or (r == "up" and b < a):
                 why.append(f"'{k}' {f} moved the wrong way {a} -> {b} (may only {'fall' if r == 'down' else 'rise'}): " + (f"-{old[k][0]} " if k in old else "") + (f"+{line}" if k in new else ""))
+    ap = approved_gate_edit(p) if why and p in APPROVABLE_SHARE and all(w.startswith("'specified_share' fell") or w.startswith("'dep_mass' f0 moved the wrong way 0 ->") for w in why) else None
+    if ap: say(True, p, f"the fall of the specified share is APPROVED: an exact-diff approval (sha256 {ap[:12]}), already on main, is consumed by this landing: " + "; ".join(why)); return True
     say(not why, p, "improving only" if not why else "; ".join(why))
     return not why
 
@@ -129,7 +134,22 @@ def tier1(p):
             cont = re.compile(r"(\\|&&|\|\||\|)\s*$")
             if cont.search(prev) and not prev.lstrip().startswith("#"): why.append(f"joins onto the line above ({prev.strip()[-40:]!r}): +{added[0]}")
             if cont.search(added[-1]) or re.match(r"\s*(&&|\|\||\|)", added[0]): why.append(f"joins onto an existing line: +{added[-1] if cont.search(added[-1]) else added[0]}")
-    say(not why, p, "only added lines" if not why else "; ".join(why))
+    ap = approved_gate_edit(p) if why else None
+    if ap: say(True, p, f"its removed/changed lines are APPROVED: an exact-diff approval (sha256 {ap[:12]}), already on main, is consumed by this landing (the verdict of the rules above is the judge's to overrule: it read the diff)")
+    else: say(not why, p, "only added lines" if not why else "; ".join(why))
+
+# GATE-EDIT APPROVALS (scripts/land/docs/gate-edit-approvals.md): the lander (scripts/land/lib/approvals.sh) enforces the rules (read from main, landed alone, one-time, in the window) and hands the approvals this landing
+# consumes in $LAND_GATE_APPROVED_FILE (`FILE HASH` per line). This judge honours it for two files only (APPROVABLE; for the closure baseline only the fall of its specified_share row), and only when the hash is also what
+# THIS judge computes for the diff it is judging (the lander's own canonical form, recomputed here): a list that names another file, another diff, or an empty or missing list approves nothing.
+APPROVABLE = ("scripts/tier1.sh", "scripts/closure-baseline.txt")
+APPROVABLE_SHARE = ("scripts/closure-baseline.txt",)
+def approved_gate_edit(p):
+    f = os.environ.get("LAND_GATE_APPROVED_FILE", "")
+    if p not in APPROVABLE or not f or not os.path.isfile(f): return None
+    lines = {l.strip() for l in open(f).read().splitlines()}
+    r = subprocess.run(["bash", "-c", '. "$1" && ga_hash . "$2" "$3" "$4"', "_", f"{HERE}/land/lib/approvals.sh", mb, head, p], capture_output=True, text=True)
+    h = r.stdout.strip()
+    return h if r.returncode == 0 and re.fullmatch(r"[0-9a-f]{64}", h) and f"{p} {h}" in lines else None
 
 def tests_map(p):
     """The delta-selection map (scripts/select-tests.py) may only select MORE: no token leaves an `all:` or a test line, no line disappears, and `none:` (the paths that select no test) gains only documentation."""
