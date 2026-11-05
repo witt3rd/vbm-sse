@@ -25,8 +25,13 @@ theorem shr_byte (w : UInt64) (k : UInt64) (d : Nat) (hk : k.toNat < 64) (hd : d
   apply UInt8.toNat_inj.mp
   simp [UInt64.toNat_toUInt8, UInt64.toNat_shiftRight, Nat.shiftRight_eq_div_pow, Nat.mod_eq_of_lt hk, hd]
 
-theorem pushWord_L (b : ByteArray) (w : UInt64) : L (pushWord b w) = L b ++ le64 w.toNat := by
-  unfold pushWord
+@[simp] theorem L_zeros7 : L zeros7 = [0, 0, 0, 0, 0, 0, 0] := by
+  simp [zeros7, L, ByteArray.data_push]
+
+@[simp] theorem L_emptyWithCapacity (n : Nat) : L (ByteArray.emptyWithCapacity n) = [] := rfl
+
+theorem pushWord_L_big (b : ByteArray) (w : UInt64) : L (b.push w.toUInt8 |>.push (w >>> 8).toUInt8 |>.push (w >>> 16).toUInt8 |>.push (w >>> 24).toUInt8 |>.push (w >>> 32).toUInt8
+    |>.push (w >>> 40).toUInt8 |>.push (w >>> 48).toUInt8 |>.push (w >>> 56).toUInt8) = L b ++ le64 w.toNat := by
   rw [le64_eq]
   simp only [L_push, List.append_assoc]
   rw [shr_byte w 8 256 (by simp) (by simp), shr_byte w 16 65536 (by simp) (by simp), shr_byte w 24 16777216 (by simp) (by simp),
@@ -36,6 +41,19 @@ theorem pushWord_L (b : ByteArray) (w : UInt64) : L (pushWord b w) = L b ++ le64
   have h0 : w.toUInt8 = UInt8.ofNat (w.toNat % 256) := by
     apply UInt8.toNat_inj.mp; simp [UInt64.toNat_toUInt8]
   rw [h0]
+
+theorem pushWord_L (b : ByteArray) (w : UInt64) : L (pushWord b w) = L b ++ le64 w.toNat := by
+  unfold pushWord
+  by_cases h : w < 256
+  · have hn : w.toNat < 256 := by simpa [UInt64.lt_iff_toNat_lt] using h
+    simp only [h, ↓reduceIte, L_append, L_push, L_zeros7, List.append_assoc]
+    rw [le64_eq, Nat.div_eq_of_lt hn, show w.toNat / 65536 = 0 by omega, show w.toNat / 16777216 = 0 by omega, show w.toNat / 4294967296 = 0 by omega,
+      show w.toNat / 1099511627776 = 0 by omega, show w.toNat / 281474976710656 = 0 by omega, show w.toNat / 72057594037927936 = 0 by omega]
+    have h0 : w.toUInt8 = UInt8.ofNat (w.toNat % 256) := by
+      apply UInt8.toNat_inj.mp; simp [UInt64.toNat_toUInt8]
+    simp [h0]
+  · simp only [h, ↓reduceIte]
+    exact pushWord_L_big b w
 
 theorem pushWord_ofNat (b : ByteArray) (n : Nat) : L (pushWord b (UInt64.ofNat n)) = L b ++ le64 n := by
   have h : (UInt64.ofNat n).toNat = n % 18446744073709551616 := by simp

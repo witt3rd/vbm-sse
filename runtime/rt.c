@@ -20,17 +20,28 @@ void *memcpy(void *d, const void *s, size_t n) { return __builtin_memcpy(d, s, n
 void *memmove(void *d, const void *s, size_t n) { return __builtin_memmove(d, s, n); }
 void *memset(void *d, int c, size_t n) { return __builtin_memset(d, c, n); }
 #else
-/* The compiler may emit calls to these even from freestanding code (struct copies, zeroing): they must exist, and must not be turned back into calls to themselves (no_builtin). */
+/* The compiler may emit calls to these even from freestanding code (struct copies, zeroing): they must exist, and must not be turned back into calls to themselves (no_builtin).
+ * 32 bytes a step (two unaligned 16-byte loads, then the two stores: the loads of a step precede its stores, so a forward copy is right when the destination is below the source, and a backward one when above). */
+typedef unsigned char v16_t __attribute__((vector_size(16), aligned(1)));
 __attribute__((no_builtin("memcpy"))) void *memcpy(void *d, const void *s, size_t n) {
   unsigned char *dp = d; const unsigned char *sp = s;
-  while (n > 7) { uint64_t w; __builtin_memcpy_inline(&w, sp, 8); __builtin_memcpy_inline(dp, &w, 8); dp += 8; sp += 8; n -= 8; }
+  while (n >= 32) { v16_t a = *(const v16_t *)sp, b = *(const v16_t *)(sp + 16); *(v16_t *)dp = a; *(v16_t *)(dp + 16) = b; dp += 32; sp += 32; n -= 32; }
+  if (n >= 16) { v16_t a = *(const v16_t *)sp; *(v16_t *)dp = a; dp += 16; sp += 16; n -= 16; }
+  if (n >= 8) { uint64_t w; __builtin_memcpy_inline(&w, sp, 8); __builtin_memcpy_inline(dp, &w, 8); dp += 8; sp += 8; n -= 8; }
+  if (n >= 4) { uint32_t w; __builtin_memcpy_inline(&w, sp, 4); __builtin_memcpy_inline(dp, &w, 4); dp += 4; sp += 4; n -= 4; }
   while (n--) *dp++ = *sp++;
   return d;
 }
 __attribute__((no_builtin("memmove"))) void *memmove(void *d, const void *s, size_t n) {
   unsigned char *dp = d; const unsigned char *sp = s;
-  if (dp <= sp || dp >= sp + n) { while (n--) *dp++ = *sp++; }
-  else { dp += n; sp += n; while (n--) *--dp = *--sp; }
+  if (dp <= sp || dp >= sp + n) {
+    while (n >= 32) { v16_t a = *(const v16_t *)sp, b = *(const v16_t *)(sp + 16); *(v16_t *)dp = a; *(v16_t *)(dp + 16) = b; dp += 32; sp += 32; n -= 32; }
+    while (n--) *dp++ = *sp++;
+  } else {
+    dp += n; sp += n;
+    while (n >= 32) { dp -= 32; sp -= 32; v16_t a = *(const v16_t *)sp, b = *(const v16_t *)(sp + 16); *(v16_t *)dp = a; *(v16_t *)(dp + 16) = b; n -= 32; }
+    while (n--) *--dp = *--sp;
+  }
   return d;
 }
 __attribute__((no_builtin("memset"))) void *memset(void *d, int c, size_t n) {
@@ -238,7 +249,8 @@ lean_obj_res lean_byte_array_copy_slice(lean_obj_arg src, lean_obj_arg so, lean_
     else r = lean_copy_sarray(dest, cap);
   }
   lean_to_sarray(r)->m_size = new_size;
-  memmove(lean_sarray_cptr(r) + dest_off, lean_sarray_cptr(src) + src_off, len);
+  if (src == r) memmove(lean_sarray_cptr(r) + dest_off, lean_sarray_cptr(src) + src_off, len);   /* the same array: the ranges may overlap */
+  else memcpy(lean_sarray_cptr(r) + dest_off, lean_sarray_cptr(src) + src_off, len);
   return r;
 }
 

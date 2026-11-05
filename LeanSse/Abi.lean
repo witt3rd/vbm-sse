@@ -10,8 +10,12 @@ what the machine holds (`LeanSseProofs.Abi`). Every word is a little-endian `u64
 
 namespace LeanSse
 
-/-- The word `w`, little-endian: eight pushes. -/
+/-- Seven zero bytes (built with `push`, once). -/
+def zeros7 : ByteArray := ((((((ByteArray.empty.push 0).push 0).push 0).push 0).push 0).push 0).push 0
+
+/-- The word `w`, little-endian. A word below 256 (nearly every length) is a byte and seven zero bytes; any other is eight pushes. -/
 def pushWord (b : ByteArray) (w : UInt64) : ByteArray :=
+  if w < 256 then b.push w.toUInt8 ++ zeros7 else
   (((((((b.push w.toUInt8).push (w >>> 8).toUInt8).push (w >>> 16).toUInt8).push (w >>> 24).toUInt8).push (w >>> 32).toUInt8).push (w >>> 40).toUInt8).push (w >>> 48).toUInt8).push (w >>> 56).toUInt8
 
 /-- One event of the report: its three lengths, then its three byte strings. -/
@@ -21,9 +25,12 @@ def packEvent (b : ByteArray) (e : FEvent) : ByteArray :=
 /-- The reconnection time as a word (`0` when unset: `retrySet` tells). -/
 def retryWord (p : FProc) : UInt64 := match p.retry with | none => 0 | some n => n
 
+/-- The size of the report of a state (the space the report asks for before it is written: only the capacity, never a byte). -/
+def reportSize (s : FSt) : Nat := 32 + s.p.lastEventId.size + s.out.foldl (fun n e => n + 24 + e.type.size + e.data.size + e.lastEventId.size) 0
+
 /-- The report of a state: the header, the last event ID string, the events in `out`. -/
 def report (s : FSt) : ByteArray :=
-  let h := pushWord (pushWord (pushWord (pushWord ByteArray.empty (UInt64.ofNat s.out.size)) (if s.p.retry.isSome then 1 else 0)) (retryWord s.p)) (UInt64.ofNat s.p.lastEventId.size)
+  let h := pushWord (pushWord (pushWord (pushWord (ByteArray.emptyWithCapacity (reportSize s)) (UInt64.ofNat s.out.size)) (if s.p.retry.isSome then 1 else 0)) (retryWord s.p)) (UInt64.ofNat s.p.lastEventId.size)
   s.out.foldl packEvent (h ++ s.p.lastEventId)
 
 /-- A new reader. -/
