@@ -119,6 +119,8 @@ par scripts/test_run_parallel.sh
 par scripts/test_select_tests.sh
 # 3f. The crash-record check and the quiet probe runner (scripts/lib-no-crash-record.sh): a coredumpctl entry fails the run (shim), a quiet crash leaves none.
 par scripts/test_no_crash_record.sh
+# 3f'. No script runs a known deliberate-crash probe binary (scripts/probe-binaries.txt) outside the helper scripts/land/bin/run-probe (private TMPDIR, ulimit -c 0 plus the dumpable-clear preload); the lint is negative-tested in vbm-land.
+scripts/land/bin/run-probe --lint scripts/probe-binaries.txt .
 
 # 3g. The diff judge of the gate-defining files (scripts/gate-diff-improving.sh): a worsening baseline, a masked or removed tier1 line, a loosened list and a shrunken protected set each FAIL.
 par scripts/test_gate_diff_improving.sh
