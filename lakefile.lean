@@ -19,3 +19,8 @@ lean_lib LeanSseProofs where
 lean_exe «vbm-sse-vectors» where
   srcDir := "vectors"
   root := `Main
+
+/-- The throughput bench (`docs/bench.md`): the Lean side, the reference and the array machine in Lean. Not part of any export. -/
+lean_exe «vbm-sse-bench» where
+  srcDir := "bench"
+  root := `Bench

@@ -1,5 +1,5 @@
 # The scorecard adapter of vbm-sse (the submission contract of the VBM scorecard; every key is required by its schema). The Lean specification, the proofs, the gates, the C interface, the freestanding
-# native library, the WebAssembly module and the code mutants of the C interface are measured. The throughput bench is not (it fails, with its dated plan in [bench]): an honest card says so.
+# native library, the WebAssembly module and the code mutants of the C interface are measured. The throughput bench is measured against two scalar comparators (docs/bench.md).
 [subject]
 name = "vbm-sse"
 kind = "library"
@@ -54,12 +54,18 @@ kill_timeout_seconds = 120
 timeout_seconds = 1800
 
 [bench]
-# NOT MEASURED YET, on purpose: a throughput bench needs a pinned scalar comparator built outside the sandbox (the roadmap names eventsource-parser, npm: a pinned version, the sha256 of its files and of the corpus, mounted read-only
-# like the comparators of the sibling library). The plan, dated: the corpus (a deterministic stream of chat-completion-shaped events) and the driver through the C interface land with the comparator builder (the scorecard's
-# comparators/build.sh gains an eventsource-parser entry); until then this command fails and the card says so. Nothing is estimated.
-comparators = [{ name = "eventsource-parser", scalar = true }]
-timeout_seconds = 600
-cmd = 'false'
+# throughput on FIVE corpora x three chunk sizes (docs/bench.md), each corpus verified against the sha256 pinned in bench/run_bench.py before anything is measured. The PRIMARY corpus, the one the floor is judged on, is `small-events` cut into
+# chunks of 4096 bytes (a stream of 30000 small chat-completion-shaped events); the other fourteen (corpus, chunk) rows (large data lines; CR LF, CR and mixed line ends; chunks of 1 and 7 bytes) are REPORTED as `corpusrow` lines, never floored,
+# with two more numbers beside the subject's own: `lean-fast` (the array machine in Lean, without the C interface) and `reference` (the whole-buffer specification in Lean). The subject measured is the compiled FREESTANDING library through its C interface.
+# eventsource-parser (npm) and eventsource-stream (crates.io) are the scalar comparators the floor ("within 2x of the best scalar comparator") is measured against; both are prebuilt OUTSIDE the sandbox (scorecard/comparators/build-sse.sh: network at
+# build time only) into a directory the launcher mounts read-only (sandbox-bwrap.binds: the directory and `env VBM_COMPARATORS <dir>`); run-sse.sh verifies each one's sha256 against the build-time manifest and prints the pinned version and hashes
+# recorded on the card. The subject and the Lean machine must find as many events as the reference on every row (a difference fails the bench); a comparator that differs is named in a `note` line.
+comparators = [{ name = "eventsource-parser", scalar = true }, { name = "eventsource-stream", scalar = true }]
+timeout_seconds = 1200
+cmd = '''cp -a /subject /tmp/w && cd /tmp/w && scripts/build_native.sh /tmp/o --no-so >/dev/null 2>&1 &&
+leanc -O2 -isystem /usr/include $(test -d /usr/include/$(uname -m)-linux-gnu && echo -isystem /usr/include/$(uname -m)-linux-gnu) -I include -o /tmp/bench_c bench/bench.c /tmp/o/libvbm_sse.a >/dev/null 2>&1 &&
+lake build vbm-sse-bench >/dev/null 2>&1 &&
+python3 bench/run_bench.py /tmp/bench_c .lake/build/bin/vbm-sse-bench'''
 
 [nonvacuity]
 comment = "--"

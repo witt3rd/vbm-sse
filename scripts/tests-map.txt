@@ -21,3 +21,4 @@ scripts/test_bindings.sh: abi/ bindings/ include/ runtime/ tests/ scripts/gen_bi
 scripts/test_ran_evidence.sh: scripts/lib-ran.sh scripts/ran-evidence.sh scripts/check-zero-warning.sh scripts/run-tests-parallel.sh
 scripts/test_run_scoped.sh: scripts/run-scoped.sh
 scripts/test_reap.sh: scripts/test_reap.sh
+scripts/test_bench.sh: bench/ scripts/test_bench.sh

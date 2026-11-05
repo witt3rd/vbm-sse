@@ -129,6 +129,9 @@ par scripts/test_relabel_attacks.sh
 par scripts/test_run_scoped.sh
 par scripts/test_reap.sh
 
+# 3i. The bench (bench/gen_corpus.py, bench/run_bench.py; docs/bench.md): a deterministic, pinned corpus; the driver refuses another corpus, a subject that disagrees with the reference and a missing comparator directory.
+par scripts/test_bench.sh
+
 # 4. The declared test scripts, in parallel; a failing, missing or silently skipped one fails Tier 1. Every scripts/test_*.sh must be declared.
 for f in scripts/test_*.sh; do case " ${tests[*]} $TIER2_ONLY " in *" $f "*) ;; *) echo "tier1: $f is not declared with par" >&2; exit 1;; esac; done
 # Delta selection (docs/decisions/0004-tier1-speed.md): only the tests the delta since the merge base can affect run (scripts/tests-map.txt; an unmapped file, a gate-defining file, no base: all of them).
