@@ -1,1 +1,2 @@
 scripts/tier1.sh | 131f90c7c0ddbbce8619537cbbbd392c47238bbe4c5a18f1671444dcfaf6a453 | the import scan admits the pinned verified library VbmSimd (and still flags VbmSimdProofs and any other root) | 2026-11-05
+scripts/closure-baseline.txt | 55c18c239cdcc414940fc7b68bbbeabc710cd24bb56ab2bd41e7e44e3a0ec64a | the new trusted boundary (vbm-simd shims) is unspecified mass; TARGET: exactly 36 boundary nodes = the four shims findAvx2 hasAvx2 ld64 ctz (T13 says why each stays trusted), floor 11537/11573 = 99.68%, no open-ended rise | 2026-11-05
