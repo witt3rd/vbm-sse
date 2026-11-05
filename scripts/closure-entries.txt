@@ -1,0 +1,3 @@
+# The entry points of the closure gate: one Lean constant per line, the functions the C exports `vbm_sse_*` call (none are written yet: the C interface is the next landing).
+# `LeanSse.feed` is the incremental machine the export will wrap: one chunk in, the events out.
+LeanSse.feed

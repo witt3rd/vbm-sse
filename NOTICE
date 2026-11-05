@@ -1,0 +1,16 @@
+vbm-sse
+Copyright 2026 Donald Thompson and the vbm-sse contributors.
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Third-party material:
+
+* The HTML Standard (WHATWG), section 9.2 "Server-sent events", https://html.spec.whatwg.org/multipage/server-sent-events.html,
+  Copyright (c) WHATWG, licensed under Creative Commons Attribution 4.0 International (code snippets in it under the BSD 3-Clause
+  License). It is not part of this repository: the library implements its event-stream algorithm, and short clauses of it are quoted
+  in docs/ with attribution. The pinned snapshot is recorded in docs/spec-pin.txt.
+
+* Lean 4 (https://github.com/leanprover/lean4), Apache License 2.0, Copyright (c) Microsoft Corporation, Lean FRO LLC and the Lean
+  contributors. The Lean toolchain is not part of this repository: it is downloaded at build time (mise.toml).
+
+* vbm-land (https://github.com/witt3rd/vbm-land), Apache License 2.0, vendored unchanged in scripts/land/ (see scripts/land/PIN).

@@ -1,0 +1,59 @@
+# Tier 1 runs on every push to main (scripts/land-direct runs the same script before it pushes); Tier 2 runs every 6 hours and on dispatch and is NOT a gate for the next merge:
+# a failure on main means revert, then fix in a worktree (AGENTS.md). Adapted from the CI of the project the gates were first built in: no merge queue, no bubblewrap
+# (nothing here runs a jail), no watchdog job (the post-merge watchdog and the revert script are not ported yet; AGENTS.md "Not ported yet").
+# Public-repository rules, enforced by scripts/lint-workflows.py (Tier 1): every job runs on a GitHub-hosted runner (never self-hosted), there is no pull_request_target trigger,
+# and no secret is used: the token is the read-only default GITHUB_TOKEN. Actions are pinned by commit SHA. This file is in the protected set and has a trust-ledger entry (T08).
+name: core
+on:
+  push:
+    branches: [main]
+    # docs-only pushes skip CI: every *.md is ignored EXCEPT the three Tier 1 reads or re-renders (docs/trust-ledger.md, docs/proof-ledger.md, docs/mutants.md); non-md files are never ignored
+    paths-ignore: ['**.md', '!docs/trust-ledger.md', '!docs/proof-ledger.md', '!docs/mutants.md']
+    # Tier 1 only on a push (stopgap, Actions minutes): scripts/land-direct already ran Tier 1 locally; this is the independent check
+  schedule:
+    - cron: '23 */6 * * *'  # Tier 2 (leanchecker, nanoda, wasm, bindings) every 6 hours on main's tip
+  workflow_dispatch:       # a manual dispatch runs Tier 1 and Tier 2
+permissions:
+  contents: read
+# concurrency is per job: Tier 1 on main is judged per commit; a newer Tier 2 supersedes an older one
+jobs:
+  tier1:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    concurrency:
+      group: core-tier1-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+      cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0                # the delta selection needs the pushed range (github.event.before); an unfetched or empty base selects every test
+      - uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2   # installs mise and the pinned Lean (mise.toml)
+      - name: cache .lake, so the build is incremental (only what changed since the cached tree recompiles)
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .lake
+          key: lake-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lake-manifest.json', 'lakefile.lean') }}-${{ hashFiles('LeanSse/**', 'LeanSseProofs/**') }}
+          restore-keys: |
+            lake-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lake-manifest.json', 'lakefile.lean') }}-
+      - run: mise exec -- scripts/tier1.sh
+        env:
+          TIER1_BASE: ${{ github.event.before }}   # delta selection (docs/decisions/0004-tier1-speed.md); empty (dispatch) or unknown: every test
+  tier2:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'     # not `needs: tier1`: scripts/tier2.sh re-runs Tier 1 itself and must not wait for a second copy
+    concurrency:
+      group: core-tier2
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 30      # the cap on Tier 2 including nanoda: a hung checker is killed here
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2   # installs mise and the pinned Lean (mise.toml)
+      - name: cache .lake, so the build is incremental (only what changed since the cached tree recompiles)
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .lake
+          key: lake-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lake-manifest.json', 'lakefile.lean') }}-${{ hashFiles('LeanSse/**', 'LeanSseProofs/**') }}
+          restore-keys: |
+            lake-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lake-manifest.json', 'lakefile.lean') }}-
+      - run: mise exec -- scripts/tier2.sh

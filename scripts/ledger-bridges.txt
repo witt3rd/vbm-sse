@@ -1,0 +1,3 @@
+# Refinement bridges for the ledger's reach rule (scripts/LedgerGate.lean): `spec-def theorem reached-def`.
+# The exports do not name the spec-def (the whole-buffer reference) but run the reached-def (the machine), and the theorem (which must mention both) proves they agree.
+LeanSse.parse LeanSse.feed_eq_parse LeanSse.feed

@@ -1,0 +1,22 @@
+# The owner approves the specification, the ABI, the trusted C, the gates and their baselines, the workflows and the governance files:
+# everything in scripts/protected-paths.txt. (main is protected by a ruleset that refuses deletion and non-fast-forward updates; scripts/land-direct prints the protected-set result and the owner reads it.)
+/LeanSse/                        @witt3rd
+/LeanSse.lean                    @witt3rd
+/LeanSseProofs/Ledger.lean       @witt3rd
+/abi/                             @witt3rd
+/runtime/                         @witt3rd
+/docs/decisions/                  @witt3rd
+/docs/trust-ledger.md             @witt3rd
+/lean-toolchain                   @witt3rd
+/mise.toml                        @witt3rd
+/lakefile.lean                    @witt3rd
+/AGENTS.md                        @witt3rd
+/CODEOWNERS                       @witt3rd
+/.github/workflows/               @witt3rd
+/LICENSE                          @witt3rd
+/NOTICE                           @witt3rd
+/SECURITY.md                      @witt3rd
+/scorecard.toml                   @witt3rd
+/docs/spec-clauses.txt            @witt3rd
+/docs/spec-pin.txt                @witt3rd
+/scripts/                         @witt3rd

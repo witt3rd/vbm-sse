@@ -1,0 +1,102 @@
+# The scorecard adapter of vbm-sse (the submission contract of the VBM scorecard; every key is required by its schema). Written for what exists at the first landing: the Lean specification, the
+# proofs, the gates. The sections that measure a compiled artifact (bare metal, mutation, bench, nonvacuity) carry commands that cannot pass yet: an honest card fails them, with the dated plan
+# in docs/decisions/0001-vbm-sse.md and the roadmap (the C interface, the freestanding runtime, the WebAssembly build, then the mutation and efficiency metrics).
+[subject]
+name = "vbm-sse"
+kind = "library"
+
+[source]
+globs = ["LeanSse.lean", "LeanSse/**/*.lean", "LeanSseProofs.lean", "LeanSseProofs/**/*.lean", "abi/**/*.lean"]
+
+[trust]
+c_files = ["abi/*.c", "runtime/**/*.c"]
+ledger = "docs/trust-ledger.md"
+entry_regex = "^### T[0-9]"
+
+[tests]
+# the vectors are generated from the reference (to come: vbm-sse-vectors-1); the standard's own examples are theorems, not tests
+generated = ["vectors/**"]
+extra = []
+gate_selftests = ["scripts/test_*.sh"]
+entry_points = ["vbm_sse_feed", "feed", "parse"]
+scenario_files = []
+
+[proof]
+sorry_pattern = '\b(sorry|admit|axiom|unsafe|implemented_by|csimp)\b'
+allow_marker = "tier1-allow"
+closure_cmd = 'cp -a /subject /tmp/w && cd /tmp/w && lake build LeanSse LeanSseProofs >/dev/null 2>&1 && lake env lean --run scripts/ClosureGate.lean'
+closure_regex = 'specified share ([0-9.]+)%'
+closure_timeout_seconds = 900
+axiom_cmd = 'cp -a /subject /tmp/w && cd /tmp/w && lake build LeanSse LeanSseProofs >/dev/null 2>&1 && lake env lean --run scripts/AxiomGate.lean'
+axiom_regex = 'axiom gate: [0-9]+ constants checked, ([0-9]+) offending'
+axiom_timeout_seconds = 900
+
+[bare_metal]
+# no C yet: the commands fail honestly until the C interface lands (plan: next landings, docs/decisions/0001-vbm-sse.md)
+build_cmd = 'cd /subject && test -f abi/vbm_sse.c'
+symbols_cmd = 'echo --end-of-symbols--'
+allowed_symbols = []
+wasm_cmd = 'cd /subject && test -f scripts/build_wasm.sh'
+wasm_bytes_regex = '([0-9]+) bytes'
+timeout_seconds = 900
+
+[mutation]
+comment = "//"
+equivalent = "mutants-equivalent.txt"
+files = []
+setup_cmd = 'true'
+kill_cmd = 'false'
+mutants = 0
+seed = 1
+kill_timeout_seconds = 120
+timeout_seconds = 600
+
+[bench]
+comparators = []
+timeout_seconds = 600
+cmd = 'false'
+
+[nonvacuity]
+comment = "--"
+files = ["LeanSse/Spec.lean"]
+setup_cmd = 'cp -a /subject /tmp/w && cd /tmp/w && lake build LeanSse LeanSseProofs >/dev/null 2>&1'
+kill_cmd = 'lake build LeanSse >/dev/null 2>&1 || exit 99; lake build LeanSseProofs >/dev/null 2>&1'
+mutants = 20
+seed = 1
+kill_timeout_seconds = 900
+timeout_seconds = 3500
+
+[tier1]
+command = 'cp -a /subject /tmp/w && cd /tmp/w && TIER1_ALL=1 scripts/tier1.sh'
+timeout_seconds = 1800
+script = "scripts/tier1.sh"
+gates = [
+  { name = "forbidden-constructs scan", selftest = "forbidden-constructs scan: negative self-tests ok" },
+  { name = "Init-only import scan", selftest = "Init-only import scan: negative self-tests ok" },
+  { name = "pipefail lint", selftest = "lint-pipefail: ok" },
+  { name = "proof-evaluation lint", selftest = "lint-proof-eval: self-test ok" },
+  { name = "zero-warning build", selftest = "zero-warning build: negative self-test ok" },
+  { name = "axiom gate", selftest = "axiom gate: negative self-test ok" },
+  { name = "obligation ledger gate", selftest = "ledger gate: negative self-tests ok" },
+  { name = "closure gate", selftest = "closure gate: [0-9]+ negative self-tests ok" },
+  { name = "trust ledger", selftest = "trust ledger: .* [0-9]+ negative self-tests ok" },
+  { name = "scrub gate", selftest = "scrub: negative self-tests ok" },
+  { name = "workflow lint", selftest = "^ok +scripts/test_lint_workflows\\.sh" },
+  { name = "protected-set gate", selftest = "^ok +scripts/test_protected_set\\.sh" },
+  { name = "lander", selftest = "^ok +scripts/test_land_direct\\.sh" },
+  { name = "commit-on-main guard", selftest = "^ok +scripts/test_githook\\.sh" },
+  { name = "parallel test runner", selftest = "^ok +scripts/test_run_parallel\\.sh" },
+  { name = "delta test selection", selftest = "^ok +scripts/test_select_tests\\.sh" },
+  { name = "crash-record check", selftest = "^ok +scripts/test_no_crash_record\\.sh" },
+  { name = "gate-diff judge", selftest = "^ok +scripts/test_gate_diff_improving\\.sh" },
+  { name = "relabel-attack suite", selftest = "^ok +scripts/test_relabel_attacks\\.sh" },
+]
+attack_cmd = 'cp -a /subject /tmp/w && cd /tmp/w && scripts/relabel-attacks.sh --no-lean'
+attack_sabotage_cmd = 'cp -a /subject /tmp/w && cd /tmp/w && scripts/relabel-attacks.sh --no-lean --sabotage'
+attack_timeout_seconds = 1800
+
+[velocity]
+window_hours = 168
+
+[floors]
+specified_share = 100

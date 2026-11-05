@@ -1,0 +1,8 @@
+# The scrub gate's banned words (scripts/scrub.py), as the sha256 of the lowercase word: the list names nothing, and a word on it is refused wherever it appears in a file of the tree
+# as a token (letters and digits, split at everything else, case folded). Internal project, host and tool names go here as hashes; a new one is `printf %s word | sha256sum`.
+6accd937d574615b71052b44f5df52a368034ab02198eff32d7212c64597608d
+4387134784cf3aa4245b7fcf4ac045d0a449524e98ba5dab4955ff4631e89df9
+d8d5d8a9239c54e6c6eab4074b22d14d72787348ff849867985d13a8361c67cf
+8aa27f40201f446bbbc28266c61fc3ada12522422ef34f51ce733bd65960cf54
+d08c7b739fee1f2f2d6cdf054660d7349289d11552d825ef225f21cdda50b112
+850ca8e0ec3f2106b6a230cd36a86cf163b3b005dd2b6c94eafaf604cbdf03a8

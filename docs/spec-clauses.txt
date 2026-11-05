@@ -1,0 +1,18 @@
+# The clause index: the tags a claim of the obligation ledger (LeanSseProofs/Ledger.lean) may cite (scripts/LedgerGate.lean refuses an unlisted tag and a claim with none).
+# One per line: `tag  summary`. `whatwg-html:` = the HTML Standard, section 9.2 Server-sent events, at the snapshot pinned in docs/spec-pin.txt (anchors are the standard's own ids; text after / names a sentence group of that section).
+# `vbm:` = a property of this library that the standard does not state (it is a consequence, or a policy named in docs/spec.md).
+whatwg-html:parsing-an-event-stream  9.2.5: the `stream` ABNF (bom, event, comment, field, end-of-line) and "lines must be separated by CRLF, LF or CR"
+whatwg-html:parsing-an-event-stream/abnf  9.2.5: the ABNF productions as a grammar of well-formed streams
+whatwg-html:parsing-an-event-stream/end-of-line  9.2.5: end-of-line = ( cr lf / cr / lf )
+whatwg-html:event-stream-interpretation  9.2.6: how a stream is read, line by line, and what each line does
+whatwg-html:event-stream-interpretation/utf-8  9.2.6: "streams must be decoded using the UTF-8 decode algorithm"
+whatwg-html:event-stream-interpretation/bom  9.2.6: the UTF-8 decode algorithm strips one leading byte order mark
+whatwg-html:event-stream-interpretation/lines  9.2.6: reading line by line; the three ways a line can end
+whatwg-html:event-stream-interpretation/line-forms  9.2.6: blank line = dispatch; leading colon = ignore; first colon splits name and value, one leading space dropped; no colon = whole line is the name
+whatwg-html:event-stream-interpretation/process-the-field  9.2.6: the field names event, data, id, retry; anything else is ignored; names compared literally
+whatwg-html:event-stream-interpretation/dispatch  9.2.6: the dispatch steps (last event ID string, empty data, trailing LF, event type, clearing the buffers)
+whatwg-html:event-stream-interpretation/end-of-file  9.2.6: "once the end of the file is reached, any pending data must be discarded"
+whatwg-html:event-stream-interpretation/examples  9.2.6: the four examples of the section
+vbm:chunk-invariance  the events of a stream do not depend on how it is cut into chunks (a property of the incremental machine, not stated by the standard)
+vbm:policy-retry  a `retry` value must have at least one digit (the standard's wording is silent on the empty string)
+vbm:policy-bounds  limits on the size of a line, of the data buffer (the standard states none)

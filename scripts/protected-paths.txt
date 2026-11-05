@@ -1,0 +1,69 @@
+# The protected set (the single list scripts/protected-set.sh reads). A change that touches any entry waits for the owner: an agent can pass
+# a gate by raising a ratchet baseline or loosening a script, so the gates, their baselines and the governance surface are not agent-mergeable.
+# One entry per line. A trailing "/" is a directory (everything under it); anything else is exactly one path. "#" starts a comment.
+# A leading "?" marks a path that is protected but may not exist in every tree yet (it arrives with another PR); drop the "?" once it has landed.
+# This file and the gate that reads it are listed below: weakening the list is itself a protected change.
+# The specification: the library's code IS its specification (one Lean core), so LeanSse/ is locked; the claims (the ledger) too.
+LeanSse/
+LeanSse.lean
+LeanSseProofs/Ledger.lean
+# The ABI and the trusted C (they arrive with their landings)
+?abi/
+?runtime/
+?include/
+docs/trust-ledger.md
+docs/decisions/
+lean-toolchain
+mise.toml
+lakefile.lean
+AGENTS.md
+CODEOWNERS
+.github/workflows/
+LICENSE
+NOTICE
+SECURITY.md
+scorecard.toml
+docs/spec-clauses.txt
+docs/spec-pin.txt
+scripts/githooks/
+# The gates and their baselines
+scripts/tier1.sh
+scripts/tier2.sh
+scripts/ClosureGate.lean
+scripts/scrub.py
+scripts/scrub-banned.sha256
+scripts/LedgerGate.lean
+scripts/AxiomGate.lean
+scripts/trust-ledger-check.sh
+scripts/trust_ledger.py
+scripts/closure-baseline.txt
+scripts/closure-entries.txt
+scripts/ledger-baseline.txt
+scripts/ledger-bridges.txt
+scripts/lint-pipefail.sh
+scripts/lint-proof-eval.sh
+scripts/proof-eval-allow.txt
+scripts/protected-paths.txt
+scripts/protected-set.sh
+scripts/test_protected_set.sh
+scripts/land-direct
+scripts/land.conf
+scripts/land.d/
+scripts/land/
+.agents/skills/
+?scripts/infra-re.sh
+scripts/gate-diff-improving.sh
+scripts/test_gate_diff_improving.sh
+scripts/relabel-attacks.sh
+scripts/test_relabel_attacks.sh
+scripts/attacks/
+scripts/git-hermetic.sh
+scripts/tests-map.txt
+scripts/select-tests.py
+scripts/lib-no-crash-record.sh
+scripts/test_land_direct.sh
+scripts/regen-baselines.sh
+scripts/generated-paths.txt
+scripts/run-tests-parallel.sh
+scripts/test_run_parallel.sh
+scripts/test_githook.sh

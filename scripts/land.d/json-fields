@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# The extra key of the landing result: the specified share Tier 1's closure gate printed (`closure gate: spec ... specified share 80.00% ...`).
+set -euo pipefail
+ss=$(awk '/^closure gate: spec [0-9]/ && !d {print; d=1}' "$LAND_STATE_DIR/tier1.log" 2>/dev/null || true)
+share=$(sed -n 's/.*specified share \([0-9][0-9.]*\)%.*/\1/p' <<<"$ss")
+echo "specified_share=${share:-null}"

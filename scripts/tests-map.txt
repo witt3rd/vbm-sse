@@ -1,0 +1,15 @@
+# Delta selection map (scripts/select-tests.py). Which Tier 1 test scripts can a changed file affect?
+# `all:` files select EVERY test; `none:` files select no test (the always-run gates in tier1.sh cover them); `<test>:` files select that test (and a test is always selected by a change to its own script).
+# A path ending in "/" is a directory. A changed file that matches NOTHING here selects EVERYTHING. Every `par` test in tier1.sh must have a line here (tier1 fails on drift).
+# Tier 2 and a manual dispatch run the full suite (TIER1_ALL=1).
+all: scripts/tier1.sh scripts/tier2.sh scripts/select-tests.py scripts/tests-map.txt scripts/run-tests-parallel.sh lakefile.lean lake-manifest.json lean-toolchain mise.toml LeanSse/ LeanSse.lean
+none: docs/ README.md CONTRIBUTING.md SECURITY.md LICENSE NOTICE AGENTS.md CODEOWNERS scorecard.toml .gitignore LeanSseProofs/ LeanSseProofs.lean scripts/AxiomGate.lean scripts/ClosureGate.lean scripts/LedgerGate.lean scripts/closure-baseline.txt scripts/closure-entries.txt scripts/ledger-baseline.txt scripts/ledger-bridges.txt scripts/generated-paths.txt scripts/proof-eval-allow.txt scripts/lint-pipefail.sh scripts/lint-proof-eval.sh scripts/trust-ledger-check.sh scripts/trust_ledger.py scripts/regen-baselines.sh scripts/scrub.py scripts/scrub-banned.sha256
+scripts/test_lint_workflows.sh: .github/ scripts/lint-workflows.py
+scripts/test_protected_set.sh: scripts/protected-set.sh scripts/protected-paths.txt
+scripts/test_land_direct.sh: scripts/land-direct scripts/land/ scripts/land.conf scripts/land.d/ scripts/infra-re.sh
+scripts/test_githook.sh: scripts/githooks/
+scripts/test_run_parallel.sh: scripts/run-tests-parallel.sh
+scripts/test_select_tests.sh: scripts/select-tests.py
+scripts/test_no_crash_record.sh: scripts/lib-no-crash-record.sh
+scripts/test_gate_diff_improving.sh: scripts/gate-diff-improving.sh scripts/git-hermetic.sh scripts/land-direct
+scripts/test_relabel_attacks.sh: scripts/relabel-attacks.sh scripts/attacks/ scripts/gate-diff-improving.sh scripts/git-hermetic.sh scripts/land-direct scripts/protected-set.sh scripts/lint-workflows.py scripts/lib-no-crash-record.sh scripts/infra-re.sh scripts/land/ scripts/land.d/ scripts/land.conf scripts/githooks/

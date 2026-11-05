@@ -1,0 +1,7 @@
+# The standard this library reads, pinned. The reference (LeanSse/Spec.lean) is written from the text of sections 9.2.5 and 9.2.6 as fetched on the date below; a change of the
+# standard is a reviewed change of the reference, never a silent one. The page itself is not vendored (the HTML Standard is CC BY 4.0; this repository quotes only short clauses, with attribution).
+document: HTML Standard (WHATWG), section 9.2 Server-sent events
+url: https://html.spec.whatwg.org/multipage/server-sent-events.html
+living-standard-last-updated: 4 November 2026
+fetched: 2026-11-05
+sha256: 070fee9c601b716964f5e204757a4cf54cbba19d6d8ce64e17ab162c6c141ef1
