@@ -82,10 +82,8 @@ static size_t class_size(size_t n, void ***list) {
   *list = &big_[k]; return c;
 }
 
-void *malloc(size_t n) {
-  void **list; size_t c = class_size(n, &list);
-  if (!c) return 0;
-  if (*list) { void *p = *list; *list = *(void **)p; live_ += c; return p; }
+static void *malloc_slow_(size_t c, void **list) {
+  (void)list;
 #ifdef __wasm__
   if (!brk_) { brk_ = (unsigned char *)(((uintptr_t)&__heap_base + 7) & ~(uintptr_t)7); end_ = (unsigned char *)(__builtin_wasm_memory_size(0) * 65536UL); }
   size_t need = c + 8;
@@ -104,9 +102,18 @@ void *malloc(size_t n) {
   brk_ += need; live_ += c;
   return p;
 }
+void *malloc(size_t n) {
+  void **list; size_t c;
+  if (n <= SMALL_MAX) { c = (n + 7) & ~(size_t)7; if (!c) c = 8; list = &small_[c / 8]; }   /* the common case: an exact 8-byte class */
+  else { c = class_size(n, &list); if (!c) return 0; }
+  void *p = *list;
+  if (p) { *list = *(void **)p; live_ += c; return p; }
+  return malloc_slow_(c, list);
+}
 void free(void *p) {
   if (!p) return;
-  size_t c = *(size_t *)((unsigned char *)p - 8); void **list; (void)class_size(c, &list);
+  size_t c = *(size_t *)((unsigned char *)p - 8); void **list;
+  if (c <= SMALL_MAX) list = &small_[c / 8]; else (void)class_size(c, &list);
   live_ -= c; *(void **)p = *list; *list = p;
 }
 void free_sized(void *p, size_t n) { (void)n; free(p); }
@@ -143,6 +150,7 @@ static void push_dec(lean_object **todo, lean_object *c) {
 }
 void lean_dec_ref_cold(lean_object *o) {
   if (lean_internal_get_rc(o) != 1) TRAP();
+  if (o->m_tag == LeanScalarArray) { lean_free_small_object(o); return; }   /* no children: the commonest object here */
   lean_object *todo = o; link_set(o, 0);
   while (todo) {
     lean_object *x = todo; todo = link_get(x);

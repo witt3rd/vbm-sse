@@ -66,10 +66,36 @@ def encEvent (e : Event) : Bytes := le64 e.type.length ++ le64 e.data.length ++ 
 def encReport (retry : Option Nat) (id : Bytes) (es : List Event) : Bytes :=
   le64 es.length ++ le64 (if retry.isSome then 1 else 0) ++ le64 (retry.getD 0) ++ le64 id.length ++ id ++ (es.map encEvent).flatten
 
-theorem packEvent_L (b : ByteArray) (e : FEvent) : L (packEvent b e) = L b ++ encEvent (absE e) := by
-  unfold packEvent encEvent absE
+theorem packEventSlow_L (b : ByteArray) (e : FEvent) : L (packEventSlow b e) = L b ++ encEvent (absE e) := by
+  unfold packEventSlow encEvent absE
   simp only [L_append, pushWord_ofNat, L_length]
   simp [L_length, List.append_assoc]
+
+theorem L_set! (b : ByteArray) (i : Nat) (v : UInt8) : L (b.set! i v) = (L b).set i v := by
+  simp [L, ByteArray.set!, Array.set!, Array.toList_setIfInBounds]
+
+@[simp] theorem L_zeros24 : L zeros24 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] := by
+  simp [zeros24, L, zeros7, ByteArray.data_push]
+
+theorem le64_small (n : Nat) (h : n < 256) : le64 n = [UInt8.ofNat n, 0, 0, 0, 0, 0, 0, 0] := by
+  rw [le64_eq, Nat.mod_eq_of_lt h, Nat.div_eq_of_lt h, show n / 65536 = 0 by omega, show n / 16777216 = 0 by omega, show n / 4294967296 = 0 by omega,
+    show n / 1099511627776 = 0 by omega, show n / 281474976710656 = 0 by omega, show n / 72057594037927936 = 0 by omega]
+  simp
+
+theorem packEvent_L (b : ByteArray) (e : FEvent) : L (packEvent b e) = L b ++ encEvent (absE e) := by
+  unfold packEvent
+  by_cases h : e.type.size < 256 ∧ e.data.size < 256 ∧ e.lastEventId.size < 256
+  · obtain ⟨h1, h2, h3⟩ := h
+    simp only [h1, h2, h3, and_self, ↓reduceIte]
+    simp only [L_append, L_set!, L_zeros24, L_length]
+    unfold encEvent absE
+    simp only [L_length, le64_small _ h1, le64_small _ h2, le64_small _ h3]
+    have hl : (L b).length = b.size := L_length b
+    rw [List.set_append_right _ _ (by omega), List.set_append_right _ _ (by omega), List.set_append_right _ _ (by omega)]
+    rw [hl, show b.size - b.size = 0 by omega, show b.size + 8 - b.size = 8 by omega, show b.size + 16 - b.size = 16 by omega]
+    simp [List.set, Nat.toUInt8]
+  · simp only [h, ↓reduceIte]
+    exact packEventSlow_L b e
 
 theorem foldl_packEvent (es : List FEvent) : ∀ b : ByteArray, L (es.foldl packEvent b) = L b ++ ((es.map absE).map encEvent).flatten := by
   induction es with

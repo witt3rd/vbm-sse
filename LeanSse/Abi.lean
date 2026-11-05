@@ -18,9 +18,19 @@ def pushWord (b : ByteArray) (w : UInt64) : ByteArray :=
   if w < 256 then b.push w.toUInt8 ++ zeros7 else
   (((((((b.push w.toUInt8).push (w >>> 8).toUInt8).push (w >>> 16).toUInt8).push (w >>> 24).toUInt8).push (w >>> 32).toUInt8).push (w >>> 40).toUInt8).push (w >>> 48).toUInt8).push (w >>> 56).toUInt8
 
-/-- One event of the report: its three lengths, then its three byte strings. -/
-def packEvent (b : ByteArray) (e : FEvent) : ByteArray :=
+/-- Twenty-four zero bytes (three words). -/
+def zeros24 : ByteArray := let z8 := zeros7.push 0; z8 ++ z8 ++ z8
+
+/-- One event of the report, any lengths: its three lengths (words), then its three byte strings. -/
+def packEventSlow (b : ByteArray) (e : FEvent) : ByteArray :=
   (((pushWord (pushWord (pushWord b (UInt64.ofNat e.type.size)) (UInt64.ofNat e.data.size)) (UInt64.ofNat e.lastEventId.size) ++ e.type) ++ e.data) ++ e.lastEventId)
+
+/-- One event of the report: its three lengths, then its three byte strings. When every length is below 256 (nearly always) the three words are made in one append of zeros and three stores. -/
+def packEvent (b : ByteArray) (e : FEvent) : ByteArray :=
+  if e.type.size < 256 ∧ e.data.size < 256 ∧ e.lastEventId.size < 256 then
+    let o := b.size
+    ((((((b ++ zeros24).set! o e.type.size.toUInt8).set! (o + 8) e.data.size.toUInt8).set! (o + 16) e.lastEventId.size.toUInt8 ++ e.type) ++ e.data) ++ e.lastEventId)
+  else packEventSlow b e
 
 /-- The reconnection time as a word (`0` when unset: `retrySet` tells). -/
 def retryWord (p : FProc) : UInt64 := match p.retry with | none => 0 | some n => n
