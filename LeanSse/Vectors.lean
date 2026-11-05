@@ -1,5 +1,6 @@
 import LeanSse.Spec
 import LeanSse.Stream
+import LeanSse.Fast
 import LeanSse.Ascii
 /-! # The shared vectors, `vbm-sse-vectors-1`
 
@@ -35,7 +36,8 @@ def seqs (xs : List Bytes) : Nat → List Bytes
 /-- The inputs. -/
 def corpus (n : Nat) : List Bytes :=
   let examples := [ascii "data: YHOO\ndata: +2\ndata: 10\n\n", ascii ": test stream\n\ndata: first event\nid: 1\n\ndata:second event\nid\n\ndata:  third event\n\n",
-    ascii "data\n\ndata\ndata\n\ndata:", ascii "data:test\n\ndata: test\n\n", [0xEF, 0xBB, 0xBF] ++ ascii "data: x\n\n", ascii "event: ping\ndata: x\r\n\r\n"]
+    ascii "data\n\ndata\ndata\n\ndata:", ascii "data:test\n\ndata: test\n\n", [0xEF, 0xBB, 0xBF] ++ ascii "data: x\n\n", ascii "event: ping\ndata: x\r\n\r\n",
+    ascii "retry: 18446744073709551615\n", ascii "retry: 18446744073709551616\n", ascii "retry: 99999999999999999999999999\n\ndata: x\n\n", ascii "retry: 1844674407370955161\n"]
   let terms : List Bytes := [[LF], [CR], [CR, LF]]
   let lines := lineSet.flatMap fun l => terms.map fun t => l ++ t
   let withTail := (seqs lines (n - 1)).flatMap fun s => [s, s ++ ascii "data: t"]
@@ -52,11 +54,13 @@ def row (id : Nat) (input : Bytes) : String :=
 /-- All the rows. -/
 def rows (n : Nat) : List String := (corpus n).zipIdx.map fun (b, i) => row i b
 
-/-- The machine, run on the input cut as `cs`, agrees with the reference's events and final state. -/
+/-- The machine, run on the input cut as `cs`, agrees with the reference's events and final state; so does the array machine (the one the C interface runs). -/
 def agrees (input : Bytes) (cs : List Bytes) : Bool :=
   let (s, evs) := feedChunks {} cs
   let (evs', p) := parse input
-  decide (evs = evs') && decide (s.p = p)
+  let f := feedChunksF {} (cs.map fun c => c.toByteArray)
+  let fevs : List Event := f.out.toList.map fun e => ⟨e.type.data.toList, e.data.data.toList, e.lastEventId.data.toList⟩
+  decide (evs = evs') && decide (s.p = p) && decide (fevs = evs') && decide (f.p.lastEventId.data.toList = p.lastEventId) && decide (f.p.retry.map UInt64.toNat = p.retry)
 
 /-- Every cut the runners of the bindings make: whole, byte by byte, and each two-way split. -/
 def cuts (input : Bytes) : List (List Bytes) :=

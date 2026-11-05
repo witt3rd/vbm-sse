@@ -126,4 +126,42 @@ theorem bom_stripped (bs : Bytes) : parse ([0xEF, 0xBB, 0xBF] ++ bs) = runLines 
 /-- Only one: a second mark is data of the first line. -/
 theorem bom_once (bs : Bytes) : stripBOM ([0xEF, 0xBB, 0xBF] ++ [0xEF, 0xBB, 0xBF] ++ bs) = [0xEF, 0xBB, 0xBF] ++ bs := rfl
 
+/-! ## Retry saturates
+
+The standard leaves the overflow of a `retry` value unspecified. This library saturates (never wraps, never refuses): the reconnection time is the value of the digits, or `retryCap` (2^64 - 1) when that is larger.
+`retry_saturates` is the theorem; `LeanSse.digitsValF_digitsVal` (the array machine) carries it to the compiled code. -/
+
+/-- The unbounded value of a digit string. -/
+def digitsExact (bs : Bytes) : Nat := bs.foldl (fun n b => n * 10 + (b - 48).toNat) 0
+
+theorem digitsVal_fold (l : Bytes) : ∀ acc : Nat,
+    l.foldl (fun n b => min (n * 10 + (b - 48).toNat) retryCap.toNat) (min acc retryCap.toNat)
+      = min (l.foldl (fun n b => n * 10 + (b - 48).toNat) acc) retryCap.toNat := by
+  induction l with
+  | nil => intro acc; simp
+  | cons b l ih =>
+    intro acc
+    have hc : retryCap.toNat = 18446744073709551615 := by simp [retryCap]
+    have e : min (min acc retryCap.toNat * 10 + (b - 48).toNat) retryCap.toNat = min (acc * 10 + (b - 48).toNat) retryCap.toNat := by
+      rw [hc]; omega
+    simp only [List.foldl_cons, e]
+    exact ih (acc * 10 + (b - 48).toNat)
+
+/-- **`retry` saturates.** A `retry` field of digits sets the reconnection time to the value of the digits, or to `retryCap` (2^64 - 1) if that is larger; nothing wraps and nothing is refused. -/
+theorem retry_saturates (p : Proc) (v : Bytes) (hne : v ≠ []) (hd : v.all isDigit = true) :
+    (applyField p fRetry v).retry = some (min (digitsExact v) retryCap.toNat) := by
+  rw [field_retry p v hne hd]
+  have h := digitsVal_fold v 0
+  simp only [Nat.zero_min] at h
+  simp only [digitsVal, digitsExact]
+  rw [h]
+
+/-- The saturated value never exceeds the cap. -/
+theorem retry_le_cap (p : Proc) (v : Bytes) (hne : v ≠ []) (hd : v.all isDigit = true) :
+    ∀ r, (applyField p fRetry v).retry = some r → r ≤ retryCap.toNat := by
+  intro r hr
+  rw [retry_saturates p v hne hd] at hr
+  have := Option.some.inj hr
+  omega
+
 end LeanSse

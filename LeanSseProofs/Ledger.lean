@@ -1,6 +1,7 @@
 import LeanSseProofs.Stream
 import LeanSseProofs.Spec
 import LeanSseProofs.Examples
+import LeanSseProofs.Fast
 /-! # The obligation ledger
 
 Every claim the library makes, keyed by a slug and tagged with the clauses of the standard it concerns (`docs/spec-clauses.txt`: the tags are checked against it, and a claim
@@ -62,7 +63,11 @@ def ledger : List Obligation := [
     (.open_ "the ABNF `stream` production as a relation, and that the reference reads exactly the streams it derives as the standard describes them (every other byte string is read by the same algorithm, with no refusal)"),
   -- the compiled code
   O "fast-machine-refines-reference" ["vbm:chunk-invariance"]
-    (.open_ "an array-based machine that scans a chunk for its terminators in bulk, and its refinement to `feed`"),
+    (.partly [``LeanSse.stepF_sim, ``LeanSse.feedF_sim, ``LeanSse.feedChunksF_sim, ``LeanSse.fast_eq_parse, ``LeanSse.fast_eq_runLines, ``LeanSse.procLineF_abs, ``LeanSse.applyFieldF_abs, ``LeanSse.dispatchF_abs, ``LeanSse.splitFieldF_abs, ``LeanSse.digitsValF_eq, ``LeanSse.satStep]
+      "the array machine (`feedF`, byte arrays, in-place line, events in `out`) yields the reference's events and final state on every chunking. Open: the bulk scan of a chunk for its terminators (the machine still takes one byte at a time)"),
+  -- WHATWG leaves the overflow of a retry value unspecified; this library saturates it (a deliberate, documented deviation: docs/spec.md P-retry), theorem retry_saturates
+  O "retry-saturates" ["vbm:policy-retry"]
+    (.proved [``LeanSse.retry_saturates, ``LeanSse.retry_le_cap, ``LeanSse.satStep, ``LeanSse.digitsValF_eq, ``LeanSse.digitsValF_digitsVal, ``LeanSse.applyFieldF_abs]),
   O "bounded-state" ["vbm:policy-bounds"]
     (.open_ "the machine holds one line and the data buffer; neither is bounded by the standard, so a hostile stream grows them without limit. A named cap with a typed refusal is a policy to specify before the C interface"),
   O "vectors-come-from-the-reference" ["vbm:chunk-invariance"]

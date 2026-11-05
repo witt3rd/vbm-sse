@@ -1,3 +1,3 @@
 # vbm-sse-vectors-1, n = 3: the row count and the sha256 of the generated file (scripts/test_vectors.sh --write regenerates it; a change is a change of the reference or of the corpus)
-rows 5381
-sha256 530b8aa41f6fa9092afae399af032c56ef47db237a200f772e13a0b75edec83e
+rows 5385
+sha256 99030a3dc1733ac09328f06845f2e677d5a840a7a16521eedd248bc776cab29c

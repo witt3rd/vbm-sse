@@ -57,8 +57,12 @@ structure Proc where
   retry : Option Nat := none
   deriving DecidableEq, Repr
 
-/-- The value of a digit string, most significant digit first. -/
-def digitsVal (bs : Bytes) : Nat := bs.foldl (fun n b => n * 10 + (b - 48).toNat) 0
+/-- The largest reconnection time: `2^64 - 1` (policy P-retry, `docs/spec.md`: a `retry` value saturates here, so the time fits the machine word the compiled code and the C interface use).
+A machine word, so that the module's initialisation never builds a bignum. -/
+def retryCap : UInt64 := 18446744073709551615
+
+/-- The value of a digit string, most significant digit first, saturated at `retryCap`. -/
+def digitsVal (bs : Bytes) : Nat := bs.foldl (fun n b => min (n * 10 + (b - 48).toNat) retryCap.toNat) 0
 
 /-- "Process the field given a field name and a field value." Names are compared literally; an unknown name is ignored. -/
 def applyField (p : Proc) (name value : Bytes) : Proc :=
