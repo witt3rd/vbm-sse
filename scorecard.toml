@@ -92,6 +92,8 @@ chmod +x /tmp/shim/lake && PATH=/tmp/shim:$PATH TEST_JOBS=1 TIER1_ALL=1 scripts/
 warm_change_cmd = 'cd /tmp/w && printf "\n-- warm-run change: a comment\n" >> LeanSseProofs/Examples.lean'
 warm_command = 'cd /tmp/w && PATH=/tmp/shim:$PATH TEST_JOBS=1 scripts/tier1.sh'
 warm_timeout_seconds = 900
+# the ran-evidence names of the fast gate (docs/decisions/0002-ran-evidence.md; scripts/ran-gates.txt): the lines `ran: NAME: N cases` the gate prints, exactly these names
+ran_names = ["zero-warning", "tests", "axiom-gate", "closure-gate", "ledger-gate", "scrub", "trust-ledger"]
 warm_skips = ["vectors check", "C ABI description check", "freestanding native test", "wasm32 build test", "language bindings test", "workflow lint", "protected-set gate", "lander", "commit-on-main guard", "parallel test runner", "delta test selection", "crash-record check", "gate-diff judge", "relabel-attack suite"]
 timeout_seconds = 1800
 script = "scripts/tier1.sh"
