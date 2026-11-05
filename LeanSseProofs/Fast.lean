@@ -312,6 +312,45 @@ theorem scanEol_stop (c : ByteArray) (i : Nat) (h : i < c.size) (h2 : scanEol c 
     simp only [hb, Bool.false_eq_true, ↓reduceIte] at h2
     have := scanEol_ge c (i + 1) (by omega); omega
 
+theorem uget_eq (c : ByteArray) (i : USize) (h : i.toNat < c.size) : c.uget i h = c[i.toNat]'(by omega) := rfl
+
+theorem scanU_eq (c : ByteArray) (n : USize) (hn : n.toNat = c.size) (i : USize) : (scanU c n hn i).toNat = scanEol c i.toNat := by
+  induction i using scanU.induct c n hn with
+  | case1 i h hb =>
+    have h1 := USize.lt_iff_toNat_lt.mp h
+    have hb' : (c[i.toNat]'(by omega) == LF || c[i.toNat]'(by omega) == CR) = true := by simpa only [uget_eq] using hb
+    rw [scanU, scanEol]
+    simp only [h, ↓reduceDIte, show i.toNat < c.size by omega, hb', ↓reduceIte, uget_eq]
+  | case2 i h hb ih =>
+    have h1 := USize.lt_iff_toNat_lt.mp h
+    have h3 : USize.size = 2 ^ System.Platform.numBits := rfl
+    have hb' : ¬ (c[i.toNat]'(by omega) == LF || c[i.toNat]'(by omega) == CR) = true := by simpa only [uget_eq] using hb
+    have h4 : (i + 1).toNat = i.toNat + 1 := by
+      have := USize.toNat_lt_size n
+      have h5 := USize.size_pos
+      rw [USize.toNat_add, USize.toNat_one, ← h3, Nat.mod_eq_of_lt (by omega)]
+    rw [scanU, scanEol]
+    simp only [h, ↓reduceDIte, show i.toNat < c.size by omega, hb', ↓reduceIte, Bool.false_eq_true, uget_eq]
+    rw [ih, h4]
+  | case3 i h =>
+    have h1 : ¬ i.toNat < n.toNat := fun h' => h (USize.lt_iff_toNat_lt.mpr h')
+    rw [scanU, scanEol]
+    simp [h, h1, hn]
+    omega
+
+theorem scanFast_eq (c : ByteArray) (i : Nat) : scanFast c i = scanEol c i := by
+  unfold scanFast
+  by_cases hn : c.usize.toNat = c.size
+  · simp only [hn, ↓reduceDIte]
+    by_cases hi : i < c.size
+    · have : i.toUSize.toNat = i := by
+        have hlt : i < USize.size := by have := USize.toNat_lt_size c.usize; omega
+        simpa [Nat.toUSize, USize.toNat_ofNat] using Nat.mod_eq_of_lt hlt
+      simp only [hi, ↓reduceIte]
+      rw [scanU_eq, this]
+    · rw [scanEol]; simp [hi]
+  · simp only [hn, ↓reduceDIte]
+
 theorem copySlice_append (c : ByteArray) (i j : Nat) (a : ByteArray) (e : Bool) :
     c.copySlice i a a.size (j - i) e = a ++ c.extract i j := by
   apply ByteArray.ext
@@ -375,8 +414,11 @@ theorem feedBulk_eq (c : ByteArray) (i : Nat) (s : FSt) : feedBulk c i s = feedL
   induction i, s using feedBulk.induct c with
   | case1 i s h h3 ih => rw [feedBulk, feedLoop]; simp only [h, ↓reduceDIte, h3, ↓reduceIte, ih]
   | case2 i s h h3 j h2 ih =>
+    have hj : j = scanEol c i := scanFast_eq c i
+    clear_value j
+    subst hj
     have h2' : i < scanEol c i := h2
-    rw [feedBulk]; simp only [h, ↓reduceDIte, h3, ↓reduceIte]
+    rw [feedBulk]; simp only [h, ↓reduceDIte, h3, ↓reduceIte, scanFast_eq]
     simp only [h2', ↓reduceDIte]
     rw [copySlice_append]
     rw [copySlice_append] at ih
@@ -385,8 +427,11 @@ theorem feedBulk_eq (c : ByteArray) (i : Nat) (s : FSt) : feedBulk c i s = feedL
     rw [show i + (scanEol c i - i - 1 + 1) = scanEol c i by omega] at this
     exact this.symm
   | case3 i s h h3 j h2 ih =>
+    have hj : j = scanEol c i := scanFast_eq c i
+    clear_value j
+    subst hj
     have h2' : ¬ i < scanEol c i := h2
-    rw [feedBulk, feedLoop]; simp only [h, ↓reduceDIte, h3, ↓reduceIte, h2', ih]
+    rw [feedBulk, feedLoop]; simp only [h, ↓reduceDIte, h3, ↓reduceIte, scanFast_eq, h2', ih]
   | case4 i s h => rw [feedBulk, feedLoop]; simp only [h, ↓reduceDIte]
 
 /-- The array machine reads a chunk as the list machine does: the same state, and the events appended to `out` are the events the list machine returns. -/

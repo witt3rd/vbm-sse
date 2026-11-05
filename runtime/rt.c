@@ -169,6 +169,7 @@ bool lean_nat_big_eq(lean_object *a, lean_object *b) { (void)a; (void)b; TRAP();
 bool lean_nat_big_le(lean_object *a, lean_object *b) { (void)a; (void)b; TRAP(); }
 uint8_t lean_uint8_of_big_nat(lean_object *a) { (void)a; TRAP(); }
 uint64_t lean_uint64_of_big_nat(lean_object *a) { (void)a; TRAP(); }
+size_t lean_usize_of_big_nat(lean_object *a) { (void)a; TRAP(); }
 
 /* ---- the rest of libleanrt and Init that the closure reaches (found by linking: every one is an undefined symbol until written) ---- */
 lean_object *lean_obj_once_cold(lean_object **loc, lean_once_cell_t *tok, lean_object *(*init)(void)) {

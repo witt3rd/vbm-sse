@@ -125,13 +125,33 @@ def scanEol (c : ByteArray) (i : Nat) : Nat :=
   if h : i < c.size then (if c[i] == LF || c[i] == CR then i else scanEol c (i + 1)) else c.size
 termination_by c.size - i
 
+/-- `scanEol` on machine words: `n` is the size of `c` (the bounds of the loop are words, so nothing is boxed and no load is checked). -/
+def scanU (c : ByteArray) (n : USize) (hn : n.toNat = c.size) (i : USize) : USize :=
+  if h : i < n then
+    (if c.uget i (by rw [USize.lt_iff_toNat_lt] at h; omega) == LF || c.uget i (by rw [USize.lt_iff_toNat_lt] at h; omega) == CR then i else scanU c n hn (i + 1))
+  else n
+termination_by n.toNat - i.toNat
+decreasing_by
+  have h1 := USize.lt_iff_toNat_lt.mp h
+  have h2 := USize.toNat_lt_size n
+  have h3 : USize.size = 2 ^ System.Platform.numBits := rfl
+  rw [USize.toNat_add, USize.toNat_one, ← h3, Nat.mod_eq_of_lt (by omega)]
+  omega
+
+/-- `scanEol`, by words when the size of the array is a word (it always is: an array has fewer than `USize.size` elements in the runtime). -/
+def scanFast (c : ByteArray) (i : Nat) : Nat :=
+  let n := c.usize
+  if hn : n.toNat = c.size then
+    (if i < c.size then (scanU c n hn i.toUSize).toNat else c.size)
+  else scanEol c i
+
 /-- The bytes of `c` from `i` on, through the machine, a run of bytes that are no line end taken at once (appended to the held line in one copy); the byte order mark and the line ends go through `stepF`.
 `feedLoop_eq_bulk` (proofs) says it is `feedLoop`. -/
 def feedBulk (c : ByteArray) (i : Nat) (s : FSt) : FSt :=
   if h : i < c.size then
     if s.bom < 3 then feedBulk c (i + 1) (stepF s c[i])
     else
-      let j := scanEol c i
+      let j := scanFast c i
       if h2 : i < j then feedBulk c j { s with skipLF := false, line := c.copySlice i s.line s.line.size (j - i) false }
       else feedBulk c (i + 1) (stepF s c[i])
   else s
