@@ -1,6 +1,10 @@
 # Going public: the record
 
-This repository starts private and is made public by its owner. This page records what was checked, what the published history carries, and the order of the flip, so that a reader can see what "public-ready" meant here. Publishing cannot be recalled (history and forks); the owner decides.
+This repository started private and was made public by its owner on **2026-11-05 (flipped)**. This page records what was checked, what the published history carries, and the order of the flip, so that a reader can see what "public-ready" meant here. Publishing cannot be recalled (history and forks); the owner decides.
+
+## What happened on the day (2026-11-05)
+
+The owner changed the visibility and applied the settings below (1 to 5); both rulesets were already active; the self-hosted runner was removed (0 runners). The flip-day commit (`ci: hosted runners ...`, sha `d801f1b`) landed by `scripts/land-direct` and its push run on `ubuntu-latest` was green (run 42086523744: Tier 1). A manual dispatch of the same commit ran Tier 2 on a hosted runner for the first time: the drift check of the pinned lander (with `GH_TOKEN`), the relabel attacks and `leanchecker` passed, and nanoda overflowed the 8 MB default stack (reproduced locally, also before the bulk-scan commit); `scripts/tier2.sh` now raises the stack limit before nanoda. A push run queued for the removed runner (it never started) was cancelled. The vendored lander's upstream check must work anonymously on hosted runners (a newer vbm-land release fixes it; until the pin moves, Tier 2 passes the default token as above).
 
 ## History published as is
 
@@ -25,7 +29,7 @@ The history is **not** re-written or re-rooted: a rewrite would change every com
 
 The numbers, the image digest and the logs are in the preparing lane's data directory, not here: a number in a document goes stale.
 
-## The flip, in order
+## The flip, in order (as prepared; the record above says how it went)
 
 While private, CI runs on the owner's self-hosted runner (hosted runners cannot start for this private repository), and `scripts/lint-workflows.py` allows a `self-hosted` label only while `.github/visibility` says `private`. So the change that returns CI to hosted runners is **prepared, not landed**, as one commit (`flip-day.patch` and its message, kept with the lane's data): in `.github/workflows/core.yml`, `runs-on: ubuntu-latest` in both jobs; the `mise install` step becomes the pinned `jdx/mise-action` (installs mise and the pinned Lean) after one `apt-get install` of `python3-yaml` and `systemd-coredump` (the gate fails, never skips, when PyYAML or `coredumpctl` is missing, and the hosted image is not promised to have them); the Tier 2 step gets the default read-only token as `GH_TOKEN` (a hosted job has no `gh` login, and the online drift check of the pinned lander clones its source with `gh`; no secret); and `.github/visibility` says `public`. `scripts/land.conf` is untouched (`LAND_RED_MODE` stays `push`; the red check keeps reading the push run of `core.yml`, now a hosted one). `core.yml` and `.github/visibility` are gate-defining: the commit lands by `scripts/land-direct` (the relabel-attack suite judges it) and the owner reads it.
 
