@@ -16,3 +16,4 @@ whatwg-html:event-stream-interpretation/examples  9.2.6: the four examples of th
 vbm:chunk-invariance  the events of a stream do not depend on how it is cut into chunks (a property of the incremental machine, not stated by the standard)
 vbm:policy-retry  a `retry` value must have at least one digit (the standard's wording is silent on the empty string)
 vbm:policy-bounds  limits on the size of a line, of the data buffer (the standard states none)
+vbm:abi-report  the report the C interface returns (its layout, and that it says what the machine holds); a property of the library's interface, not of the standard

@@ -14,3 +14,6 @@ scripts/test_select_tests.sh: scripts/select-tests.py
 scripts/test_no_crash_record.sh: scripts/lib-no-crash-record.sh
 scripts/test_gate_diff_improving.sh: scripts/gate-diff-improving.sh scripts/git-hermetic.sh scripts/land-direct
 scripts/test_relabel_attacks.sh: scripts/relabel-attacks.sh scripts/attacks/ scripts/gate-diff-improving.sh scripts/git-hermetic.sh scripts/land-direct scripts/protected-set.sh scripts/lint-workflows.py scripts/lib-no-crash-record.sh scripts/infra-re.sh scripts/land/ scripts/land.d/ scripts/land.conf scripts/githooks/
+scripts/test_abi.sh: abi/ include/ LeanSse/Abi.lean scripts/check_abi.py
+scripts/test_native.sh: abi/ runtime/ include/ tests/ scripts/build_native.sh scripts/build_shared.sh scripts/lib-no-crash-record.sh vectors/ LeanSse/ LeanSse.lean
+scripts/test_wasm.sh: abi/ runtime/ include/ tests/ scripts/build_wasm.sh vectors/ LeanSse/ LeanSse.lean

@@ -2,6 +2,7 @@ import LeanSseProofs.Stream
 import LeanSseProofs.Spec
 import LeanSseProofs.Examples
 import LeanSseProofs.Fast
+import LeanSseProofs.Abi
 /-! # The obligation ledger
 
 Every claim the library makes, keyed by a slug and tagged with the clauses of the standard it concerns (`docs/spec-clauses.txt`: the tags are checked against it, and a claim
@@ -63,11 +64,18 @@ def ledger : List Obligation := [
     (.open_ "the ABNF `stream` production as a relation, and that the reference reads exactly the streams it derives as the standard describes them (every other byte string is read by the same algorithm, with no refusal)"),
   -- the compiled code
   O "fast-machine-refines-reference" ["vbm:chunk-invariance"]
-    (.partly [``LeanSse.stepF_sim, ``LeanSse.feedF_sim, ``LeanSse.feedChunksF_sim, ``LeanSse.fast_eq_parse, ``LeanSse.fast_eq_runLines, ``LeanSse.procLineF_abs, ``LeanSse.applyFieldF_abs, ``LeanSse.dispatchF_abs, ``LeanSse.splitFieldF_abs, ``LeanSse.digitsValF_eq, ``LeanSse.satStep]
+    (.partly [``LeanSse.stepF_sim, ``LeanSse.feedF_sim, ``LeanSse.feedChunksF_sim, ``LeanSse.fast_eq_parse, ``LeanSse.procLineF_abs, ``LeanSse.applyFieldF_abs, ``LeanSse.dispatchF_abs, ``LeanSse.splitFieldF_abs, ``LeanSse.digitsValF_eq, ``LeanSse.satStep]
       "the array machine (`feedF`, byte arrays, in-place line, events in `out`) yields the reference's events and final state on every chunking. Open: the bulk scan of a chunk for its terminators (the machine still takes one byte at a time)"),
   -- WHATWG leaves the overflow of a retry value unspecified; this library saturates it (a deliberate, documented deviation: docs/spec.md P-retry), theorem retry_saturates
   O "retry-saturates" ["vbm:policy-retry"]
     (.proved [``LeanSse.retry_saturates, ``LeanSse.retry_le_cap, ``LeanSse.satStep, ``LeanSse.digitsValF_eq, ``LeanSse.digitsValF_digitsVal, ``LeanSse.applyFieldF_abs]),
+  -- the C interface
+  O "report-says-what-the-machine-holds" ["vbm:abi-report"]
+    (.proved [``LeanSse.pushWord_L, ``LeanSse.packEvent_L, ``LeanSse.report_L, ``LeanSse.rdReport_encReport, ``LeanSse.report_decodes, ``LeanSse.abi_feed_report]),
+  O "c-edge-moves-bytes" ["vbm:abi-report"]
+    (.limit "abi/vbm_sse.c copies a chunk in and hands the report's bytes out; it decides nothing, but it is C and is not proved. It is checked by the compiled library running every row of vbm-sse-vectors-1 on every cut (scripts/test_native.sh) and by mutants of the shim and the runtime that each fail that run; listed as entries of the trust ledger"),
+  O "compiled-code-agrees-with-the-lean" ["vbm:chunk-invariance"]
+    (.limit "the C that Lean emits, and the freestanding runtime that replaces libleanrt for it, are not proved to preserve the semantics of the Lean (trust ledger T01, T03, T04, T10); the shared vectors are the check, in the native build and in WebAssembly"),
   O "bounded-state" ["vbm:policy-bounds"]
     (.open_ "the machine holds one line and the data buffer; neither is bounded by the standard, so a hostile stream grows them without limit. A named cap with a typed refusal is a policy to specify before the C interface"),
   O "vectors-come-from-the-reference" ["vbm:chunk-invariance"]

@@ -4,12 +4,12 @@
 #  2. The independent kernel re-check: `leanchecker --fresh` replays every declaration of LeanSse and LeanSseProofs in a fresh environment
 #     (guards against a tampered or stale .olean).
 #  3. An independent external checker (nanoda) over the exported proof of both libraries and their dependencies.
-# (The axiom gate is Tier 1 here: it is instant on a library this size. The wasm32 and native builds, the bindings and the mutation metric arrive with the C interface.)
+# (The axiom gate is Tier 1 here: it is instant on a library this size. The native and wasm32 builds are Tier 1 tests, with node required here; the mutation metric arrives later.)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 LEAN_PREFIX=$(lean --print-prefix)
 
-TIER1_ALL=1 scripts/tier1.sh   # every test, not the delta
+VBM_SSE_REQUIRE_NODE=1 TIER1_ALL=1 scripts/tier1.sh   # every test, not the delta; node (the wasm build) is required here
 echo "tier2: the pinned lander against its source (online drift check)"
 scripts/land/bin/land-check --upstream
 echo "tier2: the whole relabel-attack suite (the Lean attacks too; Tier 1 runs the others)"

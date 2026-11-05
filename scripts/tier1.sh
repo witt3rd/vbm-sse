@@ -81,6 +81,12 @@ bg scrub scripts/scrub.py --selftest
 # the check is shown able to fail (tampered, dropped and added rows). Runs in parallel with the process scripts below.
 par scripts/test_vectors.sh
 
+# 2e''. The C interface and its targets (docs/decisions/0001-vbm-sse.md): the ABI description, the header and the report layout agree (test_abi); the freestanding native library (no libc) runs every vector on every cut (test_native);
+# the WebAssembly module (no imports) does too (test_wasm; skipped without node, required by Tier 2). Each is shown able to fail (drifted headers, tampered rows, mutants of the shim and of the runtime).
+par scripts/test_abi.sh
+par scripts/test_native.sh
+par scripts/test_wasm.sh
+
 # 2f. The workflow files are structurally valid (scripts/lint-workflows.py: one of uses/run per step, no with: under a run, jobs exist); its negative self-test is declared below.
 python3 scripts/lint-workflows.py
 par scripts/test_lint_workflows.sh

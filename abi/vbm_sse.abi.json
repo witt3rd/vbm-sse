@@ -1,0 +1,35 @@
+{
+  "abi": "vbm-sse",
+  "abi_version": 1,
+  "prefix": "vbm_sse_",
+  "note": "The machine-readable ABI of include/vbm_sse.h. scripts/check_abi.py checks the two agree (Tier 1); scripts/gen-bindings.sh generates the bindings from this file. Types are abstract: u8 u64 int size, ptr (void *), ptr:u8 ptr:ptr (pointer to u8, pointer to a pointer), ptr:NAME (pointer to struct NAME), opaque:NAME (pointer to an opaque struct). Each 'c' is the C text, compared to the header with whitespace removed.",
+  "report": {
+    "word_bytes": 8,
+    "endian": "little",
+    "header": ["count", "retry_set", "retry", "id_len"],
+    "event": ["type_len", "data_len", "id_len"],
+    "doc": "header words, then id_len bytes (the last event ID string), then count events, each three length words then type, data, last event ID at dispatch (that many bytes each). retry is 0 when retry_set is 0."
+  },
+  "errors": [
+    {"name": "OK", "value": 0},
+    {"name": "ARG", "value": 1},
+    {"name": "INTERNAL", "value": 2}
+  ],
+  "opaque": ["vbm_sse"],
+  "structs": [
+    {"name": "vbm_sse_report", "fields": [
+      {"name": "bytes", "type": "ptr:u8", "c": "const uint8_t *bytes"},
+      {"name": "nbytes", "type": "size", "c": "size_t nbytes"}]}
+  ],
+  "functions": [
+    {"name": "vbm_sse_new", "c": "int vbm_sse_new(vbm_sse **out)",
+     "ret": "int",
+     "params": [{"name": "out", "type": "ptr:ptr"}]},
+    {"name": "vbm_sse_feed", "c": "int vbm_sse_feed(vbm_sse *r, const uint8_t *buf, size_t len, vbm_sse_report *rep)",
+     "ret": "int",
+     "params": [{"name": "r", "type": "opaque:vbm_sse"}, {"name": "buf", "type": "ptr:u8"}, {"name": "len", "type": "size"}, {"name": "rep", "type": "ptr:vbm_sse_report"}]},
+    {"name": "vbm_sse_free", "c": "void vbm_sse_free(vbm_sse *r)",
+     "ret": "void",
+     "params": [{"name": "r", "type": "opaque:vbm_sse"}]}
+  ]
+}

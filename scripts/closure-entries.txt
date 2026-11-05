@@ -1,3 +1,5 @@
-# The entry points of the closure gate: one Lean constant per line, the functions the C exports `vbm_sse_*` call (none are written yet: the C interface is the next landing).
-# `LeanSse.feed` is the incremental machine the export will wrap: one chunk in, the events out.
-LeanSse.feed
+# The entry points of the closure gate: one Lean constant per line, the functions the C exports `vbm_sse_*` call (abi/vbm_sse.c calls the three Lean exports of LeanSse/Abi.lean: vbm_sse_lean_new,
+# vbm_sse_lean_feed, vbm_sse_lean_report). What they execute is classified by scripts/ClosureGate.lean: the array machine, its helpers and Init; nothing from Std, Lean or the proofs may be reachable.
+LeanSse.abiNew
+LeanSse.abiFeed
+LeanSse.abiReport
