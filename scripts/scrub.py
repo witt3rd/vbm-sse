@@ -10,7 +10,7 @@ import hashlib, os, re, subprocess, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-PATHS = [re.compile(p) for p in (r"/home/[A-Za-z0-9_.-]+", r"/Users/[A-Za-z0-9_.-]+", r"(?<![A-Za-z0-9_.])/mnt/[A-Za-z0-9_.-]+", r"~/" + "src/", r"\.[a-z]+-homes?/")]
+PATHS = [re.compile(p) for p in (r"/ho" + "me/[A-Za-z0-9_.-]+", r"/Us" + "ers/[A-Za-z0-9_.-]+", r"(?<![A-Za-z0-9_.])/mnt/[A-Za-z0-9_.-]+", r"~" + "/src/", r"\.[a-z]+-homes?/")]
 SECRETS = [re.compile(p) for p in (r"gh[pousr]_[A-Za-z0-9]{20,}", r"github_pat_[A-Za-z0-9_]{20,}", r"\bsk-[A-Za-z0-9]{20,}", r"\bAKIA[0-9A-Z]{16}\b", r"\bxox[baprs]-[A-Za-z0-9-]{10,}",
                                        r"AIza[0-9A-Za-z_-]{30,}", r"-----BEGIN [A-Z ]*PRIVATE KEY-----")]
 TOKEN = re.compile(r"[A-Za-z0-9]+")
@@ -57,7 +57,7 @@ def selftest(bans):
     cases = {"a path": "see " + "/ho" + "me/someone/x", "a mount": "at " + "/m" + "nt/share", "a token": "key " + "gh" + "p_" + "a" * 30, "a private key": "-----BEGIN " + "RSA PRIVATE KEY-----"}
     for what, text in cases.items():
         if not scan_text(text, bans): print(f"scrub: self-test: the gate does not flag {what}", file=sys.stderr); sys.exit(1)
-    for text in ("Server-sent events, the lungs of a stream? no: just data.", "a public name: witt3rd, vbm-json, WHATWG; a url https://html.spec.whatwg.org/x; ~/.config is not ~/src"):
+    for text in ("Server-sent events, the lungs of a stream? no: just data.", "a public name: witt3rd, vbm-json, WHATWG; a url https://html.spec.whatwg.org/x; " + "~" + "/.config is not " + "~" + "/src"):
         if scan_text(text, bans): print("scrub: self-test: the gate flags a clean text: " + text, file=sys.stderr); sys.exit(1)
     # the gate reads files: a scratch file with a finding must make scan_files fail
     with tempfile.TemporaryDirectory() as d:
