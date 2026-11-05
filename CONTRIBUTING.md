@@ -8,7 +8,7 @@ The maintainers' own work (mostly done by AI agents in parallel worktrees) lands
 
 ## Before you open a PR
 
-1. Install what the README lists (`mise`, `python3`, `git`).
+1. Install what the README lists (`mise`, `git`, `python3` with PyYAML, a C compiler, `node`, a recent `cargo`, `coredumpctl`; `VBM_ALLOW_SKIP=1` is the stated way past a missing optional tool).
 2. Make your change on a branch of your fork.
 3. Run the gate, **Tier 1**, and make sure it passes:
 
