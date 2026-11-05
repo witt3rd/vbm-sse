@@ -120,8 +120,26 @@ def feedLoop (c : ByteArray) (i : Nat) (s : FSt) : FSt :=
   if h : i < c.size then feedLoop c (i + 1) (stepF s c[i]) else s
 termination_by c.size - i
 
+/-- The index of the first line end (LF or CR) at or after `i` (`c.size` if none). -/
+def scanEol (c : ByteArray) (i : Nat) : Nat :=
+  if h : i < c.size then (if c[i] == LF || c[i] == CR then i else scanEol c (i + 1)) else c.size
+termination_by c.size - i
+
+/-- The bytes of `c` from `i` on, through the machine, a run of bytes that are no line end taken at once (appended to the held line in one copy); the byte order mark and the line ends go through `stepF`.
+`feedLoop_eq_bulk` (proofs) says it is `feedLoop`. -/
+def feedBulk (c : ByteArray) (i : Nat) (s : FSt) : FSt :=
+  if h : i < c.size then
+    if s.bom < 3 then feedBulk c (i + 1) (stepF s c[i])
+    else
+      let j := scanEol c i
+      if h2 : i < j then feedBulk c j { s with skipLF := false, line := c.copySlice i s.line s.line.size (j - i) false }
+      else feedBulk c (i + 1) (stepF s c[i])
+  else s
+termination_by c.size - i
+decreasing_by all_goals omega
+
 /-- A chunk through the machine: the events it completed are appended to `out`. -/
-def feedF (s : FSt) (c : ByteArray) : FSt := feedLoop c 0 s
+def feedF (s : FSt) (c : ByteArray) : FSt := feedBulk c 0 s
 
 /-- A stream given as a list of chunks. -/
 def feedChunksF (s : FSt) (cs : List ByteArray) : FSt := cs.foldl feedF s

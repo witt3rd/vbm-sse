@@ -270,11 +270,131 @@ theorem feedLoop_sim (c : ByteArray) (i : Nat) (s : FSt) :
     rw [L_drop_size c i h]
     simp [feed_nil, Sim]
 
+theorem scanEol_ge (c : ByteArray) (i : Nat) (hi : i ≤ c.size) : i ≤ scanEol c i := by
+  induction i using scanEol.induct c with
+  | case1 i h hb => rw [scanEol]; simp only [h, ↓reduceDIte, hb, ↓reduceIte]; omega
+  | case2 i h hb ih =>
+    rw [scanEol]; simp only [h, ↓reduceDIte, hb]
+    have : ¬ (c[i] == LF || c[i] == CR) = true := by simpa using hb
+    simp only [this, Bool.false_eq_true, ↓reduceIte]
+    have := ih (by omega); omega
+  | case3 i h => rw [scanEol]; simp [h]; omega
+
+theorem scanEol_le (c : ByteArray) (i : Nat) (hi : i ≤ c.size) : scanEol c i ≤ c.size := by
+  induction i using scanEol.induct c with
+  | case1 i h hb => rw [scanEol]; simp only [h, ↓reduceDIte, hb, ↓reduceIte]; omega
+  | case2 i h hb ih =>
+    rw [scanEol]; simp only [h, ↓reduceDIte, hb]
+    have : ¬ (c[i] == LF || c[i] == CR) = true := by simpa using hb
+    simp only [this, Bool.false_eq_true, ↓reduceIte]
+    exact ih (by omega)
+  | case3 i h => rw [scanEol]; simp [h]
+
+/-- Every byte from `i` up to `scanEol c i` is no line end. -/
+theorem scanEol_ne (c : ByteArray) (i : Nat) : ∀ k (hk : k < c.size), i ≤ k → k < scanEol c i → c[k] ≠ LF ∧ c[k] ≠ CR := by
+  induction i using scanEol.induct c with
+  | case1 i h hb => intro k hk h1 h2; rw [scanEol] at h2; simp only [h, ↓reduceDIte, hb, ↓reduceIte] at h2; omega
+  | case2 i h hb ih =>
+    intro k hk h1 h2
+    have hb' : ¬ (c[i] == LF || c[i] == CR) = true := by simpa using hb
+    rw [scanEol] at h2; simp only [h, ↓reduceDIte, hb', Bool.false_eq_true, ↓reduceIte] at h2
+    by_cases hki : k = i
+    · subst hki; simpa [not_or] using hb'
+    · exact ih k hk (by omega) h2
+  | case3 i h => intro k hk h1 h2; rw [scanEol] at h2; simp only [h, ↓reduceDIte] at h2; omega
+
+/-- The scan stops at a line end, if it stops before the end. -/
+theorem scanEol_stop (c : ByteArray) (i : Nat) (h : i < c.size) (h2 : scanEol c i = i) : c[i] = LF ∨ c[i] = CR := by
+  rw [scanEol] at h2; simp only [h, ↓reduceDIte] at h2
+  by_cases hb : (c[i] == LF || c[i] == CR) = true
+  · simpa using hb
+  · exfalso
+    simp only [hb, Bool.false_eq_true, ↓reduceIte] at h2
+    have := scanEol_ge c (i + 1) (by omega); omega
+
+theorem copySlice_append (c : ByteArray) (i j : Nat) (a : ByteArray) (e : Bool) :
+    c.copySlice i a a.size (j - i) e = a ++ c.extract i j := by
+  apply ByteArray.ext
+  simp only [ByteArray.copySlice, ByteArray.data_append, ByteArray.data_extract]
+  have h1 : a.data.extract 0 a.size = a.data := by simp
+  have h2 : a.data.extract (a.size + min (j - i) (c.data.size - i)) a.data.size = #[] := by
+    apply Array.extract_eq_empty_of_le; simp [ByteArray.size_data]
+  have h3 : c.data.extract i (i + (j - i)) = c.data.extract i j ∨ i + (j - i) ≠ j := by
+    by_cases hij : i ≤ j
+    · left; congr 1; omega
+    · right; omega
+  rw [h1, h2, Array.append_empty]
+  rcases h3 with h3 | h3
+  · rw [h3]
+  · have : j ≤ i := by omega
+    rw [Array.extract_eq_empty_of_le (by omega), Array.extract_eq_empty_of_le (by simp; omega)]
+
+/-- One step of the machine on a byte that is no line end, once the byte order mark is settled: the byte joins the held line. -/
+theorem stepF_plain (s : FSt) (b : UInt8) (h3 : ¬ s.bom < 3) (hl : b ≠ LF) (hc : b ≠ CR) :
+    stepF s b = { s with skipLF := false, line := s.line.push b } := by
+  simp [stepF, stepBodyF, h3, hl, hc]
+
+theorem extract_succ (a c : ByteArray) (i j : Nat) (hij : i ≤ j) (hj : j < c.size) :
+    (a ++ c.extract i j).push c[j] = a ++ c.extract i (j + 1) := by
+  rw [← L_inj]
+  simp only [L_push, L_append, L_extract]
+  rw [show j + 1 - i = (j - i) + 1 by omega, List.take_add_one, show j - i = (j - i) from rfl]
+  have : ((L c).drop i)[j - i]? = some c[j] := by
+    rw [List.getElem?_drop, show i + (j - i) = j by omega, List.getElem?_eq_getElem (by rw [L_length]; exact hj), L_getElem]
+  rw [this]; simp
+
+theorem feedLoop_run (c : ByteArray) (i e : Nat) (he : e ≤ c.size) (hne : ∀ k (hk : k < c.size), i ≤ k → k < e → c[k] ≠ LF ∧ c[k] ≠ CR) :
+    ∀ d, i + (d + 1) ≤ e → ∀ s : FSt, ¬ s.bom < 3 →
+      feedLoop c i s = feedLoop c (i + (d + 1)) { s with skipLF := false, line := s.line ++ c.extract i (i + (d + 1)) } := by
+  intro d
+  induction d with
+  | zero =>
+    intro hd s hs
+    have hi' : i < c.size := by omega
+    rw [feedLoop]; simp only [hi', ↓reduceDIte]
+    obtain ⟨n1, n2⟩ := hne i hi' (Nat.le_refl _) (by omega)
+    rw [stepF_plain s c[i] hs n1 n2]
+    have : s.line.push c[i] = s.line ++ c.extract i (i + (0 + 1)) := by
+      have := extract_succ s.line c i i (Nat.le_refl _) hi'
+      rw [ByteArray.extract_same] at this
+      simpa using this
+    rw [this]
+  | succ d ih =>
+    intro hd' s hs
+    have hi : i + (d + 1) < c.size := by omega
+    rw [ih (by omega) s hs, feedLoop]
+    simp only [hi, ↓reduceDIte]
+    obtain ⟨n1, n2⟩ := hne (i + (d + 1)) hi (by omega) (by omega)
+    rw [stepF_plain { s with skipLF := false, line := s.line ++ c.extract i (i + (d + 1)) } c[i + (d + 1)] hs n1 n2]
+    simp only
+    rw [extract_succ s.line c i (i + (d + 1)) (by omega) hi]
+    rfl
+
+/-- The bulk loop is the byte loop: the same state. -/
+theorem feedBulk_eq (c : ByteArray) (i : Nat) (s : FSt) : feedBulk c i s = feedLoop c i s := by
+  induction i, s using feedBulk.induct c with
+  | case1 i s h h3 ih => rw [feedBulk, feedLoop]; simp only [h, ↓reduceDIte, h3, ↓reduceIte, ih]
+  | case2 i s h h3 j h2 ih =>
+    have h2' : i < scanEol c i := h2
+    rw [feedBulk]; simp only [h, ↓reduceDIte, h3, ↓reduceIte]
+    simp only [h2', ↓reduceDIte]
+    rw [copySlice_append]
+    rw [copySlice_append] at ih
+    refine Eq.trans ih ?_
+    have := feedLoop_run c i (scanEol c i) (scanEol_le c i (by omega)) (scanEol_ne c i) (scanEol c i - i - 1) (by omega) s h3
+    rw [show i + (scanEol c i - i - 1 + 1) = scanEol c i by omega] at this
+    exact this.symm
+  | case3 i s h h3 j h2 ih =>
+    have h2' : ¬ i < scanEol c i := h2
+    rw [feedBulk, feedLoop]; simp only [h, ↓reduceDIte, h3, ↓reduceIte, h2', ih]
+  | case4 i s h => rw [feedBulk, feedLoop]; simp only [h, ↓reduceDIte]
+
 /-- The array machine reads a chunk as the list machine does: the same state, and the events appended to `out` are the events the list machine returns. -/
 theorem feedF_sim (s : FSt) (c : ByteArray) : absS (feedF s c) = (feed (absS s) (L c)).1 ∧
     (feedF s c).out.toList.map absE = s.out.toList.map absE ++ (feed (absS s) (L c)).2 := by
   have h := feedLoop_sim c 0 s
   rw [List.drop_zero] at h
+  unfold feedF; rw [feedBulk_eq]
   exact h
 
 theorem absS_init : absS {} = ({} : St) := by simp [absS, absP]
