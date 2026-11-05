@@ -20,6 +20,8 @@ lake env "$LEAN_PREFIX/bin/leanchecker" --fresh LeanSse
 echo "tier2: leanchecker --fresh LeanSseProofs"
 lake env "$LEAN_PREFIX/bin/leanchecker" --fresh LeanSseProofs
 echo "tier2: external checker (nanoda) over the exported proof"
+# nanoda recurses deeply over the export and overflows the 8 MB default stack (seen on a hosted runner and locally): raise the soft limit, as far as the hard one allows
+ulimit -s unlimited 2>/dev/null || ulimit -s "$(ulimit -H -s)"
 exp=$(mktemp); cfg=$(mktemp)
 trap 'rm -f "$exp" "$cfg"' EXIT
 lake env "$LEAN_PREFIX/bin/leanexport" LeanSse LeanSseProofs > "$exp"
