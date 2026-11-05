@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Land with scripts/land-direct (docs/decisions/0002-land-direct.md), never open a PR. The entry point of the pinned lander (scripts/land/bin/land-direct); this file is the repository's own.
+# Wiring contract, read by `scripts/relabel-attacks.sh --check-wired` (the rules this repository adds live in scripts/land.d/, taken from origin/main by the lander):
+#   scripts/land.d/post-rebase runs the gate-diff judge (scripts/gate-diff-improving.sh): a baseline only improves, tier1.sh only gains steps, the protected list only grows;
+#   scripts/land.d/post-tier1 runs the relabel-attack suite (scripts/relabel-attacks.sh) when a gate-defining file is touched.
+exec "$(cd "$(dirname "$0")" && pwd)/land/bin/land-direct" "$@"
