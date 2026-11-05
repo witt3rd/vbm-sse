@@ -12,7 +12,7 @@ namespace LeanSse
 def L (b : ByteArray) : Bytes := b.data.toList
 
 def absE (e : FEvent) : Event := ⟨L e.type, L e.data, L e.lastEventId⟩
-def absP (p : FProc) : Proc := ⟨L p.data, L p.type, L p.idBuf, L p.lastEventId, p.retry.map UInt64.toNat⟩
+def absP (p : FProc) : Proc := ⟨if p.hasData then L p.data ++ [LF] else [], L p.type, L p.idBuf, L p.lastEventId, p.retry.map UInt64.toNat⟩
 /-- The state of the list machine a state of the array machine stands for (the events in `out` are not part of it). -/
 def absS (s : FSt) : St := ⟨s.bom, s.skipLF, (L s.line).reverse, absP s.p⟩
 
@@ -133,7 +133,7 @@ theorem applyFieldF_abs (p : FProc) (n v : ByteArray) : absP (applyFieldF p n v)
   by_cases h1 : L n = fEvent
   · simp [h1, absP]
   by_cases h2 : L n = fData
-  · simp [h1, h2, absP, n1, n2, n3, n4, n5, n6]
+  · by_cases hd : p.hasData = true <;> simp [h1, h2, hd, absP, n1, n2, n3, n4, n5, n6]
   by_cases h3 : L n = fId
   · by_cases h : NUL ∈ L v <;> simp [h1, h2, h3, h, absP, n1, n2, n3, n4, n5, n6]
   by_cases h4 : L n = fRetry
@@ -173,26 +173,13 @@ theorem splitFieldF_abs (l : ByteArray) : ((L (splitFieldF l).1, L (splitFieldF 
 
 theorem dispatchF_abs (p : FProc) :
     absP (dispatchF p).1 = (dispatch (absP p)).1 ∧ (dispatchF p).2.map absE = (dispatch (absP p)).2 := by
+  have hty : p.type.size = 0 ↔ L p.type = [] := by rw [← L_length]; simp
   unfold dispatchF dispatch
-  have hz : p.data.size = 0 ↔ L p.data = [] := by rw [← L_length]; simp
-  by_cases h0 : p.data.size = 0
-  · have h0' : L p.data = [] := hz.mp h0
-    simp [h0, absP, h0']
-  · have h0' : ¬ L p.data = [] := fun h => h0 (hz.mpr h)
-    have hlt : p.data.size - 1 < p.data.size := by omega
-    have hlast : (L p.data).getLast? = some p.data[p.data.size - 1] := by
-      rw [List.getLast?_eq_getElem?, L_length, List.getElem?_eq_getElem (by rw [L_length]; exact hlt), L_getElem]
-    have hty : p.type.size = 0 ↔ L p.type = [] := by rw [← L_length]; simp
-    have hd : L (if h : p.data.size - 1 < p.data.size then (if p.data[p.data.size - 1] = LF then p.data.extract 0 (p.data.size - 1) else p.data) else p.data)
-        = (if (L p.data).getLast? = some LF then (L p.data).dropLast else L p.data) := by
-      simp only [hlt, ↓reduceDIte, hlast, Option.some.injEq]
-      by_cases hl : p.data[p.data.size - 1] = LF
-      · simp [hl, L_extract_zero, List.dropLast_eq_take, L_length]
-      · simp [hl]
-    by_cases ht : p.type.size = 0
-    · simp [h0, h0', ht, hty.mp ht, absP, absE, hd]
-    · simp [h0, h0', ht, mt hty.mpr ht, absP, absE, hd]
-      by_cases hl : (L p.data).getLast? = some LF <;> simp [hl]
+  by_cases h : p.hasData = true
+  · by_cases ht : p.type.size = 0
+    · simp [h, ht, hty.mp ht, absP, absE]
+    · simp [h, ht, mt hty.mpr ht, absP, absE]
+  · simp [h, absP]
 
 theorem procLineF_abs (p : FProc) (l : ByteArray) :
     absP (procLineF p l).1 = (procLine (absP p) (L l)).1 ∧ (procLineF p l).2.map absE = (procLine (absP p) (L l)).2 := by
@@ -497,7 +484,9 @@ theorem applyFieldS_eq (p : FProc) (c : ByteArray) (i k s j : Nat) : applyFieldS
     have hne : fDataB ≠ fEventB := fun e => n1 (by rw [← L_fDataB, ← L_fEventB, e])
     unfold applyFieldF
     simp only [hne, ↓reduceIte]
-    rw [copySlice_append]
+    have hc : c.copySlice s (p.data.push LF) (p.data.size + 1) (j - s) false = p.data.push LF ++ c.extract s j := by
+      rw [← copySlice_append c s j (p.data.push LF) false, ByteArray.size_push]
+    rw [hc]
   · simp [h]
 
 theorem procSliceF_eq (p : FProc) (c : ByteArray) (i j : Nat) (hj : j ≤ c.size) :

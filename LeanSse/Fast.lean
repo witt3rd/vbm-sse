@@ -16,7 +16,9 @@ structure FEvent where
 
 /-- The algorithm's state (`Proc`, on byte arrays). -/
 structure FProc where
+  /-- The data buffer WITHOUT its last LF (the reference's buffer is every `data` value followed by an LF): the lines are joined by an LF, `hasData` says there is a buffer at all. -/
   data : ByteArray := ByteArray.empty
+  hasData : Bool := false
   type : ByteArray := ByteArray.empty
   idBuf : ByteArray := ByteArray.empty
   lastEventId : ByteArray := ByteArray.empty
@@ -63,7 +65,7 @@ termination_by l.size - i
 /-- `applyField`. -/
 def applyFieldF (p : FProc) (name value : ByteArray) : FProc :=
   if name = fEventB then { p with type := value }
-  else if name = fDataB then { p with data := (p.data ++ value).push LF }
+  else if name = fDataB then (if p.hasData then { p with data := p.data.push LF ++ value } else { p with data := value, hasData := true })
   else if name = fIdB then (if hasNulF value 0 then p else { p with idBuf := value })
   else if name = fRetryB then
     (if value.size ≠ 0 ∧ allDigitsF value 0 = true then { p with retry := some (digitsValF value 0 0) } else p)
@@ -72,11 +74,10 @@ def applyFieldF (p : FProc) (name value : ByteArray) : FProc :=
 /-- `dispatch`. -/
 def dispatchF (p : FProc) : FProc × Option FEvent :=
   let p := { p with lastEventId := p.idBuf }
-  if p.data.size = 0 then ({ p with type := ByteArray.empty }, none)
-  else
-    let d := if h : p.data.size - 1 < p.data.size then (if p.data[p.data.size - 1] = LF then p.data.extract 0 (p.data.size - 1) else p.data) else p.data
-    ({ p with data := ByteArray.empty, type := ByteArray.empty },
-      some ⟨if p.type.size = 0 then tMessageB else p.type, d, p.lastEventId⟩)
+  if p.hasData then
+    ({ p with data := ByteArray.empty, hasData := false, type := ByteArray.empty },
+      some ⟨if p.type.size = 0 then tMessageB else p.type, p.data, p.lastEventId⟩)
+  else ({ p with type := ByteArray.empty }, none)
 
 /-- `splitField`: cut at the first colon, drop one space after it. -/
 def splitFieldF (l : ByteArray) : ByteArray × ByteArray :=
@@ -202,7 +203,8 @@ def isDataAt (c : ByteArray) (i k : Nat) : Bool :=
 
 /-- `applyField` on a line that is still in the chunk: the name is `c[i, k)`, the value is `c[s, j)`. A `data` line appends its value to the data buffer in one copy; any other field builds its name and value. -/
 def applyFieldS (p : FProc) (c : ByteArray) (i k s j : Nat) : FProc :=
-  if isDataAt c i k then { p with data := (c.copySlice s p.data p.data.size (j - s) false).push LF }
+  if isDataAt c i k then
+    (if p.hasData then { p with data := c.copySlice s (p.data.push LF) (p.data.size + 1) (j - s) false } else { p with data := c.extract s j, hasData := true })
   else applyFieldF p (c.extract i k) (c.extract s j)
 
 /-- Where the value of a field line `c[i, j)` starts, given the place `k` of its first colon (`j` if none): after the colon and one space if there is one. -/
