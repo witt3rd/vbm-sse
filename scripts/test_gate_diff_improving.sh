@@ -4,7 +4,8 @@
 # hand-edited generated file FAIL (exit 1, naming the line); the matching improvements, an added tier1 test line and a re-rendered ledger PASS (exit 0); an unrelated file is not judged.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-[ "$(bash -c '. scripts/git-hermetic.sh; echo loaded')" = loaded ] || { echo "tier1: scripts/git-hermetic.sh does not load (a stub that exits?)" >&2; exit 1; }
+. scripts/lib-ran.sh   # ran_case counts each executed check, ran_done prints the evidence line `ran: NAME: N cases` (docs/decisions/0002-ran-evidence.md)
+[ "$(bash -c '. scripts/git-hermetic.sh; echo loaded')" = loaded ] && ran_case || { echo "tier1: scripts/git-hermetic.sh does not load (a stub that exits?)" >&2; exit 1; }
 . scripts/git-hermetic.sh   # hermetic git: no ambient config, explicit identity and branch
 root=$(pwd); gate=$root/scripts/gate-diff-improving.sh
 fail() { echo "tier1: gate-diff-improving: $*" >&2; exit 1; }
@@ -22,13 +23,13 @@ mut() {
   local name=$1 want=$2 needle=$3; shift 3
   "$@"; git add -A; git commit -qm "$name" --allow-empty
   out=$("$gate" ${GDI_FLAGS:-} "$base" HEAD 2>&1) && rc=0 || rc=$?
-  if [ "$want" = pass ]; then [ "$rc" = 0 ] && grep -qx PASS <<<"$out" || fail "$name: an improving change was refused ($out)"
-  else [ "$rc" = 1 ] && grep -qx FAIL <<<"$out" || fail "$name: expected FAIL, got rc=$rc ($out)"; fi
+  if [ "$want" = pass ]; then [ "$rc" = 0 ] && grep -qx PASS <<<"$out" && ran_case || fail "$name: an improving change was refused ($out)"
+  else [ "$rc" = 1 ] && grep -qx FAIL <<<"$out" && ran_case || fail "$name: expected FAIL, got rc=$rc ($out)"; fi
   if [ -n "$needle" ] && ! grep -qF -- "$needle" <<<"$out"; then fail "$name: '$needle' not in the output ($out)"; fi
   git reset -q --hard "$base"
 }
 num() { sed -i -E "$1" "$2"; }
-grep -q '^mass ' scripts/closure-baseline.txt && grep -q '^specified_share ' scripts/closure-baseline.txt && grep -q '^proved ' scripts/ledger-baseline.txt || fail "the real baselines no longer have the keys this self-test mutates: update it"
+grep -q '^mass ' scripts/closure-baseline.txt && grep -q '^specified_share ' scripts/closure-baseline.txt && grep -q '^proved ' scripts/ledger-baseline.txt && ran_case || fail "the real baselines no longer have the keys this self-test mutates: update it"
 mut "no change"                 pass ""                       true
 mut "unrelated file"            pass ""                       eval 'echo x >> docs/other.md'
 mut "mass raised"               fail "mass"                   num 's/^mass ([0-9]+)/echo "mass $((\1+1))"/e' scripts/closure-baseline.txt
@@ -86,11 +87,12 @@ done
 mkdir -p "$T/slow"; printf '#!/bin/sh\nexec sleep 60\n' > "$T/slow/python3"; chmod +x "$T/slow/python3"
 git reset -q --hard "$base"; echo x >> docs/other.md; git add -A; git commit -qm slow
 t0=$SECONDS; out=$(PATH="$T/slow:$PATH" GDI_TIMEOUT=1 "$gate" "$base" HEAD 2>&1) && rc=0 || rc=$?
-[ "$rc" = 2 ] && grep -qF "GDI_TIMEOUT=1s" <<<"$out" && [ $((SECONDS - t0)) -lt 30 ] || fail "a never-finishing judge was not bounded (rc=$rc, $out)"
+[ "$rc" = 2 ] && grep -qF "GDI_TIMEOUT=1s" <<<"$out" && [ $((SECONDS - t0)) -lt 30 ] && ran_case || fail "a never-finishing judge was not bounded (rc=$rc, $out)"
 git reset -q --hard "$base"
 # --touched: the lander's trigger: the gate-defining files the change touches, nothing for an unrelated one
 git reset -q --hard "$base"; echo '# x' >> scripts/ClosureGate.lean; echo x >> docs/other.md; git add -A; git commit -qm touched
-[ "$("$gate" --touched "$base" HEAD)" = scripts/ClosureGate.lean ] || fail "--touched did not name exactly the gate-defining file"
+[ "$("$gate" --touched "$base" HEAD)" = scripts/ClosureGate.lean ] && ran_case || fail "--touched did not name exactly the gate-defining file"
 git reset -q --hard "$base"; echo x >> docs/other.md; git add -A; git commit -qm untouched
-[ -z "$("$gate" --touched "$base" HEAD)" ] || fail "--touched named a file of an unrelated change"
+[ -z "$("$gate" --touched "$base" HEAD)" ] && ran_case || fail "--touched named a file of an unrelated change"
+ran_done test_gate_diff_improving
 echo "gate-diff-improving: every worsening, mask, list or source change FAILS and every improvement passes: ok"

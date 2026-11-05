@@ -8,24 +8,20 @@
 # Run: mise exec -- scripts/test_wasm.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
+. scripts/lib-ran.sh   # ran_case / ran_done / must_fail: the self-tests count what they executed and a refused tool is a failure (docs/decisions/0002-ran-evidence.md)
 if ! command -v node >/dev/null 2>&1; then
   if [ -n "${VBM_SSE_REQUIRE_NODE:-}" ]; then echo "test_wasm: node is required here (Tier 2) and was not found" >&2; exit 1; fi
   echo "test_wasm: SKIPPED: node was not found on PATH (Tier 1 skips, Tier 2 requires it: scripts/tier2.sh)"; exit 0
 fi
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 jpids=(); bgj() { "$@" & jpids+=($!); }; joinj() { local p; for p in "${jpids[@]}"; do wait "$p" || exit 1; done; jpids=(); }
-must_fail() {  # must_fail NAME CMD...
-  local n=$1 e="$tmp/neg.$BASHPID.err"; shift
-  if "$@" >/dev/null 2>"$e"; then echo "test_wasm: self-test: $n did not fail (the check cannot fail)" >&2; exit 1; fi
-  [ -s "$e" ] || { echo "test_wasm: self-test: $n failed without saying why" >&2; exit 1; }
-}
 changed() { cmp -s "$1" "$2" && { echo "test_wasm: self-test: the corruption of $3 changed nothing" >&2; exit 1; } || true; }
 lake build LeanSse:static vbm-sse-vectors >/dev/null
 scripts/build_wasm.sh "$tmp/vbm.wasm"
 lake exe vbm-sse-vectors --n 3 --out "$tmp/v.jsonl" >/dev/null 2>&1
 v="$tmp/v.jsonl"
 run() { node tests/wasm/wasm_test.mjs "$1" "$2"; }   # run WASM VECTORS
-run "$tmp/vbm.wasm" "$v"
+run "$tmp/vbm.wasm" "$v"; ran_case   # the positive run: the control of the negative self-tests
 sed '0,/"events":\[{"type":"6d657373616765"/s//"events":[{"type":"6d657373616766"/' "$v" > "$tmp/c1.jsonl"; changed "$v" "$tmp/c1.jsonl" "an event type"
 bgj must_fail "a corrupted expected event" run "$tmp/vbm.wasm" "$tmp/c1.jsonl"
 sed '0,/"retry":18446744073709551615/s//"retry":18446744073709551614/' "$v" > "$tmp/c2.jsonl"; changed "$v" "$tmp/c2.jsonl" "the saturated reconnection time"
@@ -48,4 +44,5 @@ bgj mutant bytepush 'lean_sarray_cptr(r)[sz] = b;' 'lean_sarray_cptr(r)[sz] = b 
 bgj mutant arraypush 'lean_array_cptr(r)[sz] = v;' 'lean_array_cptr(r)[sz] = lean_array_cptr(r)[sz ? sz - 1 : 0]; if (!sz) lean_array_cptr(r)[0] = v;'
 bgj mutant nofree 'live_ -= c; *(void **)p = *list; *list = p;' '*(void **)p = *list; *list = p;'
 joinj
+ran_done test_wasm
 echo "test_wasm: ok (module $(stat -c %s "$tmp/vbm.wasm") bytes; negative self-tests: a corrupted expected event and reconnection time, a deliberate leak, a module with an import, an unresolved symbol and three runtime mutants all fail)"

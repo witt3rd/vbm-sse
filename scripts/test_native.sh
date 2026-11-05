@@ -10,17 +10,13 @@
 # Run: mise exec -- scripts/test_native.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
+. scripts/lib-ran.sh   # ran_case / ran_done / must_fail: the self-tests count what they executed and a refused tool is a failure (docs/decisions/0002-ran-evidence.md)
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 . scripts/lib-no-crash-record.sh; nocrash_build   # probes and mutants that are meant to crash run under `quiet` (no core, no systemd-coredump record); ulimit -c does not stop the record
 sysinc_flags() { printf '%s\n' -isystem "$1"; [ ! -d "$1/$(uname -m)-linux-gnu" ] || printf '%s\n' -isystem "$1/$(uname -m)-linux-gnu"; }
 mapfile -t SYSFLAGS < <(sysinc_flags "${VBM_SSE_SYSINCLUDE:-/usr/include}")
 # Independent negative self-tests run concurrently: bgj CMD..., joinj (docs/decisions/0004-tier1-speed.md).
 jpids=(); bgj() { "$@" & jpids+=($!); }; joinj() { local p; for p in "${jpids[@]}"; do wait "$p" || exit 1; done; jpids=(); }
-must_fail() {  # must_fail NAME CMD...: the check has to be able to fail, and say why
-  local n=$1 e="$tmp/neg.$BASHPID.err"; shift
-  if "$@" >/dev/null 2>"$e"; then echo "test_native: self-test: $n did not fail (the check cannot fail)" >&2; exit 1; fi
-  [ -s "$e" ] || { echo "test_native: self-test: $n failed without saying why" >&2; exit 1; }
-}
 changed() { cmp -s "$1" "$2" && { echo "test_native: self-test: the corruption of $3 changed nothing" >&2; exit 1; } || true; }
 lake build vbm-sse-vectors LeanSse:static >/dev/null
 # 1. the build and its symbols
@@ -44,7 +40,7 @@ lake exe vbm-sse-vectors --n 3 --out "$tmp/v.jsonl" >/dev/null 2>&1
 v="$tmp/v.jsonl"
 build_test() { leanc "${SYSFLAGS[@]}" -Wall -Wextra -Werror -I include -o "$2" tests/abi_test.c "$1/libvbm_sse.a"; }   # build_test LIBDIR OUT
 build_test "$tmp/lib" "$tmp/abi_test"
-quiet "$tmp/abi_test" "$v" | sed 's/^/test_native: /'
+quiet "$tmp/abi_test" "$v" | sed 's/^/test_native: /'; ran_case   # the positive run: the control of the negative self-tests
 sed '0,/"events":\[{"type":"6d657373616765"/s//"events":[{"type":"6d657373616766"/' "$v" > "$tmp/c1.jsonl"; changed "$v" "$tmp/c1.jsonl" "an event type"
 bgj must_fail "a corrupted expected event" quiet "$tmp/abi_test" "$tmp/c1.jsonl"
 sed '0,/"retry":18446744073709551615/s//"retry":18446744073709551614/' "$v" > "$tmp/c2.jsonl"; changed "$v" "$tmp/c2.jsonl" "the saturated reconnection time"
@@ -80,4 +76,5 @@ bgj mutant shim_limit ABI 'len >= (size_t)LEAN_MAX_SMALL_NAT' 'len > 3'
 bgj mutant shim_leak ABI '  if (r->report) lean_dec_ref(r->report);
   lean_dec_ref(r->state);' '  lean_dec_ref(r->state);'
 joinj
+ran_done test_native
 echo "test_native: ok (negative self-tests: a build linking malloc and one calling printf fail the nm check; a corrupted expected event and reconnection time, lean_mini.h tag, layout and count increment, and runtime mutants bytepush, arraypush, extract, sarrayeq, nofree and shim mutants noinc, report, limit, leak each fail)"

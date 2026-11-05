@@ -7,17 +7,13 @@
 # Run: mise exec -- scripts/test_bindings.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
+. scripts/lib-ran.sh   # ran_case / ran_done / must_fail: the self-tests count what they executed and a refused tool is a failure (docs/decisions/0002-ran-evidence.md)
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 export PYTHONDONTWRITEBYTECODE=1
-must_fail() {  # must_fail NAME CMD...: the check has to be able to fail, and say why
-  local n=$1; shift
-  if "$@" >/dev/null 2>"$tmp/neg.err"; then echo "test_bindings: self-test: $n did not fail (the check cannot fail)" >&2; exit 1; fi
-  [ -s "$tmp/neg.err" ] || { echo "test_bindings: self-test: $n failed without saying why" >&2; exit 1; }
-}
 changed() { cmp -s "$1" "$2" && { echo "test_bindings: self-test: the corruption of $3 changed nothing" >&2; exit 1; } || true; }
 
 # 1. the drift check
-scripts/gen-bindings.sh --check
+scripts/gen-bindings.sh --check; ran_case
 gen=(bindings/python/vbm_sse/_generated.py bindings/python/vbm_sse/__init__.py bindings/rust/src/sys.rs bindings/rust/src/lib.rs)
 for f in "${gen[@]}"; do
   [ -f "$f" ] || { echo "test_bindings: $f is missing" >&2; exit 1; }
@@ -36,7 +32,7 @@ lake exe vbm-sse-vectors --n 3 --out "$tmp/v.jsonl" >/dev/null 2>&1
 v="$tmp/v.jsonl"
 export VBM_SSE_LIB="$tmp/lib/libvbm_sse.so"
 py() { python3 tests/bindings/test_python.py "$1" "${2:-bindings/python}"; }
-py "$v"
+py "$v"; ran_case   # the positive run: the control of the negative self-tests below
 # 3. negative self-tests, Python
 sed '0,/"events":\[{"type":"6d657373616765"/s//"events":[{"type":"6d657373616766"/' "$v" > "$tmp/c1.jsonl"; changed "$v" "$tmp/c1.jsonl" "an event type"
 sed '0,/"last_event_id":"[0-9a-f]*","retry"/s//"last_event_id":"ff","retry"/' "$v" > "$tmp/c2.jsonl"; changed "$v" "$tmp/c2.jsonl" "a last event ID"
@@ -56,11 +52,11 @@ echo "test_bindings: python: corrupted event, last event ID and reconnection tim
 # 4. Rust
 if ! command -v cargo >/dev/null 2>&1; then
   if [ -n "${VBM_SSE_REQUIRE_CARGO:-}" ]; then echo "test_bindings: cargo is required here (Tier 2) and was not found" >&2; exit 1; fi
-  echo "test_bindings: rust SKIPPED: cargo was not found on PATH (Tier 1 skips, Tier 2 requires it: scripts/tier2.sh)"; echo "test_bindings: ok (python only)"; exit 0
+  echo "test_bindings: rust SKIPPED: cargo was not found on PATH (Tier 1 skips, Tier 2 requires it: scripts/tier2.sh)"; ran_done test_bindings; echo "test_bindings: ok (python only)"; exit 0
 fi
 export CARGO_TARGET_DIR="$tmp/target" CARGO_BUILD_JOBS=2 VBM_SSE_LIB_DIR="$tmp/lib"
 rs() { VBM_SSE_VECTORS="$1" cargo test --quiet --offline --manifest-path "${2:-bindings/rust}/Cargo.toml" -- --nocapture; }
-rs "$v" 2>&1 | grep -E 'vectors: [0-9]+ rows' || { echo "test_bindings: the rust vectors test did not report" >&2; exit 1; }
+rs "$v" 2>&1 | grep -E 'vectors: [0-9]+ rows' || { echo "test_bindings: the rust vectors test did not report" >&2; exit 1; }; ran_case
 for i in 1 2 3; do must_fail "rust: corrupted row set $i" rs "$tmp/c$i.jsonl"; done
 rsmutant() {  # rsmutant NAME FILE SED
   rm -rf "$tmp/r_$1"; mkdir -p "$tmp/r_$1"; cp -r bindings/rust/. "$tmp/r_$1/"
@@ -72,4 +68,5 @@ rsmutant order src/lib.rs 's/events.push(Event { type_: c.take(tl)?, data: c.tak
 rsmutant words src/lib.rs 's/let (count, retry_set, retry, id_len) = (c.word()?, c.word()?, c.word()?, c.word()?);/let (count, retry_set, id_len, retry) = (c.word()?, c.word()?, c.word()?, c.word()?);/'
 rsmutant errcode src/sys.rs 's/^pub const VBM_SSE_ARG: c_int = 1;/pub const VBM_SSE_ARG: c_int = 9;/'
 echo "test_bindings: rust: corrupted event, last event ID and reconnection time and four reader mutants each fail"
+ran_done test_bindings
 echo "test_bindings: ok"

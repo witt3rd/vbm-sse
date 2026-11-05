@@ -13,7 +13,8 @@ VBM_SSE_REQUIRE_NODE=1 VBM_SSE_REQUIRE_CARGO=1 TIER1_ALL=1 scripts/tier1.sh   # 
 echo "tier2: the pinned lander against its source (online drift check)"
 scripts/land/bin/land-check --upstream
 echo "tier2: the whole relabel-attack suite (the Lean attacks too; Tier 1 runs the others)"
-scripts/relabel-attacks.sh
+# a step that ran nothing (a refused tool) fails here, whatever its exit status was (docs/decisions/0002-ran-evidence.md)
+scripts/ran-evidence.sh gate tier2-relabel-attacks '^PASS relabel-attacks: ([0-9]+) of' scripts/relabel-attacks.sh
 echo "tier2: leanchecker --fresh LeanSse"
 lake env "$LEAN_PREFIX/bin/leanchecker" --fresh LeanSse
 echo "tier2: leanchecker --fresh LeanSseProofs"
