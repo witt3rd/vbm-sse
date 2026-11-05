@@ -81,6 +81,7 @@ gates = [
   { name = "closure gate", selftest = "closure gate: [0-9]+ negative self-tests ok" },
   { name = "trust ledger", selftest = "trust ledger: .* [0-9]+ negative self-tests ok" },
   { name = "scrub gate", selftest = "scrub: negative self-tests ok" },
+  { name = "vectors check", selftest = "^ok +scripts/test_vectors\\.sh" },
   { name = "workflow lint", selftest = "^ok +scripts/test_lint_workflows\\.sh" },
   { name = "protected-set gate", selftest = "^ok +scripts/test_protected_set\\.sh" },
   { name = "lander", selftest = "^ok +scripts/test_land_direct\\.sh" },

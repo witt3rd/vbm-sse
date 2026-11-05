@@ -31,6 +31,9 @@ scripts/tier1.sh
 scripts/tier2.sh
 scripts/ClosureGate.lean
 scripts/scrub.py
+scripts/test_vectors.sh
+scripts/vectors-baseline.txt
+vectors/
 scripts/scrub-banned.sha256
 scripts/LedgerGate.lean
 scripts/AxiomGate.lean

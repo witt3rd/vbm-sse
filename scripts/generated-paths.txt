@@ -4,3 +4,4 @@
 scripts/closure-baseline.txt
 scripts/ledger-baseline.txt
 docs/proof-ledger.md
+scripts/vectors-baseline.txt

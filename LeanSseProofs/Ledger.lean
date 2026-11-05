@@ -65,5 +65,7 @@ def ledger : List Obligation := [
     (.open_ "an array-based machine that scans a chunk for its terminators in bulk, and its refinement to `feed`"),
   O "bounded-state" ["vbm:policy-bounds"]
     (.open_ "the machine holds one line and the data buffer; neither is bounded by the standard, so a hostile stream grows them without limit. A named cap with a typed refusal is a policy to specify before the C interface"),
+  O "vectors-come-from-the-reference" ["vbm:chunk-invariance"]
+    (.limit "the shared rows (vbm-sse-vectors-1) are written by LeanSse.Vectors from `parse` only, and the generator checks the compiled machine against the reference on every cut (whole, byte by byte, each two-way split) before it writes: a run of compiled code, not a proof; `chunk_invariance` is the theorem it exercises. The row set is pinned by size and sha256 (scripts/vectors-baseline.txt)"),
   O "bindings-agree-with-the-reference" ["vbm:chunk-invariance"]
     (.limit "every binding will run the vectors the Lean reference generated; a second implementation per language is tested, not proved")]

@@ -12,4 +12,5 @@ lake env lean --run scripts/ClosureGate.lean >/dev/null || worse scripts/closure
 lake env lean --run scripts/ClosureGate.lean --write >/dev/null
 lake env lean --run scripts/LedgerGate.lean >/dev/null || worse scripts/ledger-baseline.txt     # also renders docs/proof-ledger.md
 lake env lean --run scripts/LedgerGate.lean --write >/dev/null
+scripts/test_vectors.sh --write >/dev/null     # the vectors baseline: a change of the reference is a change of the row set (a bare regeneration, reviewed on main)
 echo "regen-baselines: ok"

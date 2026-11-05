@@ -77,6 +77,10 @@ bg trust-ledger scripts/trust-ledger-check.sh
 # 2e. The scrub gate: no internal name, host path or secret-shaped string in any file of the tree (scripts/scrub.py; its negative self-tests run in the same call).
 bg scrub scripts/scrub.py --selftest
 
+# 2e'. The shared vectors (vbm-sse-vectors-1; scripts/test_vectors.sh): the rows come from the Lean reference only, the machine agrees with it on every cut of every input, the row set is pinned by size and sha256, and
+# the check is shown able to fail (tampered, dropped and added rows). Runs in parallel with the process scripts below.
+par scripts/test_vectors.sh
+
 # 2f. The workflow files are structurally valid (scripts/lint-workflows.py: one of uses/run per step, no with: under a run, jobs exist); its negative self-test is declared below.
 python3 scripts/lint-workflows.py
 par scripts/test_lint_workflows.sh

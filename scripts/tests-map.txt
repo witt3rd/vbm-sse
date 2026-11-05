@@ -4,6 +4,7 @@
 # Tier 2 and a manual dispatch run the full suite (TIER1_ALL=1).
 all: scripts/tier1.sh scripts/tier2.sh scripts/select-tests.py scripts/tests-map.txt scripts/run-tests-parallel.sh lakefile.lean lake-manifest.json lean-toolchain mise.toml LeanSse/ LeanSse.lean
 none: docs/ README.md CONTRIBUTING.md SECURITY.md LICENSE NOTICE AGENTS.md CODEOWNERS scorecard.toml .gitignore LeanSseProofs/ LeanSseProofs.lean scripts/AxiomGate.lean scripts/ClosureGate.lean scripts/LedgerGate.lean scripts/closure-baseline.txt scripts/closure-entries.txt scripts/ledger-baseline.txt scripts/ledger-bridges.txt scripts/generated-paths.txt scripts/proof-eval-allow.txt scripts/lint-pipefail.sh scripts/lint-proof-eval.sh scripts/trust-ledger-check.sh scripts/trust_ledger.py scripts/regen-baselines.sh scripts/scrub.py scripts/scrub-banned.sha256
+scripts/test_vectors.sh: LeanSse/ LeanSse.lean vectors/ scripts/vectors-baseline.txt scripts/lib-no-crash-record.sh
 scripts/test_lint_workflows.sh: .github/ scripts/lint-workflows.py
 scripts/test_protected_set.sh: scripts/protected-set.sh scripts/protected-paths.txt
 scripts/test_land_direct.sh: scripts/land-direct scripts/land/ scripts/land.conf scripts/land.d/ scripts/infra-re.sh

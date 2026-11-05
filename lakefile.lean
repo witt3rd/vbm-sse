@@ -14,3 +14,8 @@ lean_lib LeanSse where
 /-- The proofs: may import `Std` and `Lean`; NEVER linked (nothing in `LeanSse` may import it, and no executable or export depends on it). -/
 lean_lib LeanSseProofs where
   globs := #[.andSubmodules `LeanSseProofs]
+
+/-- The vector generator (`vbm-sse-vectors-1`): rows come from the Lean REFERENCE only (`LeanSse.Vectors`); this executable only writes them. Not part of any export. -/
+lean_exe «vbm-sse-vectors» where
+  srcDir := "vectors"
+  root := `Main
