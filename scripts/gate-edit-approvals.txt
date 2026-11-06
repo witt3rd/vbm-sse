@@ -1,1 +1,0 @@
-LeanSse/Fast.lean | 3fe73a8796da2d5b189484dddaeaca07d1f3b90b5f3879825a79ed8bbcb0f03d | a data: line takes its colon at i + 4 without a scan (proved dataLine_colon, feedFast_eq): perf slice P3, no new trusted code, to be measured on a quiet host before landing | 2026-11-06
