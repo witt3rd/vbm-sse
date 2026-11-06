@@ -124,8 +124,11 @@ mut_ap "empty list: specified share fell"   fail "specified_share"   empty      
 mut_ap "share: a hash of another diff"      fail "specified_share"   'scripts/closure-baseline.txt 0000000000000000000000000000000000000000000000000000000000000000' scripts/closure-baseline.txt eval "$share_fall"
 mut_ap "share: another file's hash"         fail "specified_share"   'scripts/closure-baseline.txt %s' scripts/tier1.sh eval "$share_fall"
 # a base that does not carry the dep_mass row yet (the landing that introduces it): the row appears, 0 -> N, and only an approval lets it
-base_full=$base; sed -i '/^dep_mass /d' scripts/closure-baseline.txt; git add -A; git commit -qm "a base without the dep_mass row" --allow-empty; base=$(git rev-parse HEAD)
+base_full=$base; sed -i -e '/^dep_mass /d' -e '/^carveout_mass /d' scripts/closure-baseline.txt; git add -A; git commit -qm "a base without the dep_mass row" --allow-empty; base=$(git rev-parse HEAD)
 dep_new='sed -i "/^dep_mass /d" scripts/closure-baseline.txt; echo "dep_mass 3122" >> scripts/closure-baseline.txt'
+co_new='sed -i "/^carveout_mass /d" scripts/closure-baseline.txt; echo "carveout_mass 36" >> scripts/closure-baseline.txt'
+mut_ap "approved: the carveout_mass row appears (and the share rises)" pass "APPROVED" 'scripts/closure-baseline.txt %s' scripts/closure-baseline.txt eval "$share_fall; $co_new"
+mut_ap "no approval: the carveout_mass row appears"  fail "carveout_mass"  none                  scripts/closure-baseline.txt eval "$co_new"
 mut_ap "approved: the dep_mass row appears (and the share falls)" pass "APPROVED" 'scripts/closure-baseline.txt %s' scripts/closure-baseline.txt eval "$share_fall; $dep_new"
 mut_ap "no approval: the dep_mass row appears"  fail "dep_mass"  none                  scripts/closure-baseline.txt eval "$dep_new"
 git reset -q --hard "$base_full"; base=$base_full

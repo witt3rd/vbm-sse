@@ -7,7 +7,7 @@
 #   scripts/tier1.sh:  may only GAIN lines: a removed or changed line FAILS, so does an added line that weakens (|| true, exit 0, set +e, if false, ...) or that joins
 #                      onto an existing line (a trailing backslash / && / || / |, or an added line that continues the one above).
 #   GATE-EDIT APPROVALS: a landing that consumes an exact-diff approval ($LAND_GATE_APPROVED_FILE, set by the lander; the hash is recomputed here) relaxes (a) scripts/tier1.sh's removed/changed lines and (b)
-#                      ONLY the fall of the `specified_share` row of scripts/closure-baseline.txt and the first appearance of its `dep_mass` row (the pinned-library mass ratchet, 0 -> N); every other baseline row (and a later rise of
+#                      ONLY the fall of the `specified_share` row of scripts/closure-baseline.txt and the first appearance of its `dep_mass` row (the pinned-library mass ratchet, 0 -> N) and of its `carveout_mass` row (the carve-out mass ratchet, 0 -> N); every other baseline row (and a later rise of
 #                      `dep_mass`), every list and every gate source is never relaxed by an approval.
 #   scorecard.toml: its [floors] specified_share is a ratchet: it may only rise and may not be removed (the rest of the adapter is not judged here).
 #   Generated files (docs/proof-ledger.md): accepted only when the ledger baseline moved improving, or (counts unchanged) when its render source LeanSseProofs/Ledger.lean changed
@@ -42,7 +42,7 @@ def show(ref, p): return git("show", f"{ref}:{p}", check=False)
 # (a new unverified module or a new allocation is a raise); a key that is not `removable` may not disappear (a target, or coverage of a function/module).
 D = lambda *n: {k: "down" for k in n}
 RULES = {
- "scripts/closure-baseline.txt": [(r"LeanSse\S*", {"f0": "down"}, True), (r"mass", {"f0": "down"}, False), (r"dep_mass", {"f0": "down"}, False), (r"specified_share", {"f0": "ratio", "f1": "ratio"}, False)],
+ "scripts/closure-baseline.txt": [(r"LeanSse\S*", {"f0": "down"}, True), (r"mass", {"f0": "down"}, False), (r"dep_mass", {"f0": "down"}, False), (r"carveout_mass", {"f0": "down"}, False), (r"specified_share", {"f0": "ratio", "f1": "ratio"}, False)],
  "scripts/ledger-baseline.txt":  [(r"proved", {"f0": "up"}, False), (r"open", {"f0": "down"}, False), (r"total", {"f0": "up"}, False)],
 }
 LISTS = ["scripts/closure-entries.txt", "scripts/ledger-bridges.txt", "scripts/proof-eval-allow.txt", "scripts/protected-paths.txt", "scripts/generated-paths.txt", "mutants-equivalent.txt", "scripts/pinned-libs.lock",
@@ -91,7 +91,7 @@ def baseline(p):
                     if s1 * t0 < s0 * t1: why.append(f"'{k}' fell {s0}/{t0} -> {s1}/{t1}: -{old[k][0]} +{line}")
             elif (r == "down" and b > a) or (r == "up" and b < a):
                 why.append(f"'{k}' {f} moved the wrong way {a} -> {b} (may only {'fall' if r == 'down' else 'rise'}): " + (f"-{old[k][0]} " if k in old else "") + (f"+{line}" if k in new else ""))
-    ap = approved_gate_edit(p) if why and p in APPROVABLE_SHARE and all(w.startswith("'specified_share' fell") or w.startswith("'dep_mass' f0 moved the wrong way 0 ->") for w in why) else None
+    ap = approved_gate_edit(p) if why and p in APPROVABLE_SHARE and all(w.startswith("'specified_share' fell") or w.startswith("'dep_mass' f0 moved the wrong way 0 ->") or w.startswith("'carveout_mass' f0 moved the wrong way 0 ->") for w in why) else None
     if ap: say(True, p, f"the fall of the specified share is APPROVED: an exact-diff approval (sha256 {ap[:12]}), already on main, is consumed by this landing: " + "; ".join(why)); return True
     say(not why, p, "improving only" if not why else "; ".join(why))
     return not why
