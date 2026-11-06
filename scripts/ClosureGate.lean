@@ -11,6 +11,8 @@ Walks every definition reachable from the entry points (`scripts/closure-entries
   pinned      a definition of a PINNED LIBRARY (`scripts/pinned-libs.lock`, docs/decisions/0005-pinned-library.md; today vbm-simd, root `VbmSimd`): counted as SPEC while the library on disk matches its lock
               line (the lake manifest's rev, the checkout's HEAD, the spec_hash of its spec files) and every module of its root was built from that very checkout; else UNVERIFIED. Its reached mass is
               printed apart and RATCHETED (`dep_mass` of the baseline may only fall: a new pin or more reached code is a reviewed edit). Its `@[extern]` shims count as boundary.
+  carveout    an `@[extern]` declaration named in `scripts/carveouts.txt` (DECISIONS 20 of the scorecard: a documented, protected carve-out: its trust-ledger entry says what it is, why it cannot be proved and how it is checked instead; its files are in the protected set).
+              It is OUTSIDE the specified share (numerator and denominator), printed apart (`carve-outs: N nodes`) and RATCHETED: `carveout_mass` of the baseline may only fall without approval. An extern NOT listed stays boundary and counts against the share.
   UNVERIFIED  a definition of ours outside `LeanSse` (the ABI shim and the like: none yet); its count per module may only fall
   FORBIDDEN   `LeanSseProofs` or `VbmSimdProofs` (never linked) or `Std`/`Lean` (Init only: a `Lean.*` import forces full runtime initialisation): any such definition
               reachable from an entry point FAILS the gate.
@@ -143,6 +145,8 @@ structure Measure where
   forbidden : Array Name
   /-- the reached mass of the verified pinned libraries (counted in `spec`; ratcheted as `dep_mass`) -/
   pinnedMass : Nat := 0
+  /-- the carve-outs reached, with their node mass -/
+  carved : Array (Name × Nat) := #[]
   /-- per pinned library: (root, status, why, reached mass, class) -/
   pinned : Array (String × String × String × Nat × String) := #[]
 
@@ -154,6 +158,7 @@ def measureClosure (env : Environment) (args : List String) : IO Measure := do
   let entries := (entryNames ++ (if args.contains "--entry" then [arg "--entry" ""] else [])).map String.toName
   for e in entries do
     if (env.find? e).isNone then throw (IO.userError s!"closure gate: entry point {e} is not in the environment")
+  let carveNames : List Name := (← readLines (arg "--carveouts-file" "scripts/carveouts.txt")).filterMap fun l => (l.splitOn "|").head?.map (fun x => x.trimAscii.toString.toName)
   let reach := walk env entries {}
   -- Which constants do the statements of LeanSseProofs theorems mention? A spec definition that no theorem mentions is "spec" in name only.
   let mut mentioned : NameSet := {}
@@ -171,6 +176,7 @@ def measureClosure (env : Environment) (args : List String) : IO Measure := do
   let mut forbidden : Array Name := #[]
   let mut mass : Std.HashMap String Nat := {}
   let mut counts : Std.HashMap String Nat := {}
+  let mut carved : Array (Name × Nat) := #[]
   let mut perModule : Std.HashMap String Nat := {}
   let mut perModuleMass : Std.HashMap String Nat := {}
   for n in reach.toList do
@@ -179,11 +185,12 @@ def measureClosure (env : Environment) (args : List String) : IO Measure := do
     if !(match ci with | .defnInfo _ | .opaqueInfo _ => true | _ => false) then continue
     let c := classify env n
     let c0 := if c == "local" then "UNVERIFIED" else if c == "other" then pinClass pins pinBad (rootOf env n).toString else c
-    let cls := if (c0 == "spec" || c0 == "UNVERIFIED") && isExtern env n then "boundary" else c0
+    let cls := if (c0 == "spec" || c0 == "UNVERIFIED") && isExtern env n then (if carveNames.contains n then "carveout" else "boundary") else c0
     counts := counts.insert cls (counts.getD cls 0 + 1)
     let size := (ci.value?.map (·.sizeWithoutSharing)).getD 0
-    if c == "other" && cls != "boundary" then pinMass := pinMass.insert (rootOf env n).toString (pinMass.getD (rootOf env n).toString 0 + size)
+    if c == "other" && cls != "boundary" && cls != "carveout" then pinMass := pinMass.insert (rootOf env n).toString (pinMass.getD (rootOf env n).toString 0 + size)
     mass := mass.insert cls (mass.getD cls 0 + size)
+    if cls == "carveout" then carved := carved.push (n, size)
     if cls == "proofs" || cls == "heavy" then forbidden := forbidden.push n
     if cls == "spec" && c == "spec" && !mentioned.contains n then uncovered := uncovered.push n   -- a pinned library's definitions are covered by ITS clauses, not by our theorems
     if args.contains "--emit" && cls != "spec" then
@@ -199,25 +206,26 @@ def measureClosure (env : Environment) (args : List String) : IO Measure := do
     (r, "unlocked", "its root is not a line of scripts/pinned-libs.lock", ms, "UNVERIFIED")
   let pinned := locked ++ unlocked
   let pinnedMass := pinned.foldl (fun a (_, _, _, ms, cl) => if cl == "spec" then a + ms else a) 0
-  return { entries := entries.length, counts, mass, perModule, perModuleMass, uncovered, forbidden, pinnedMass, pinned }
+  return { entries := entries.length, counts, mass, perModule, perModuleMass, uncovered, forbidden, pinnedMass, pinned, carved }
 
 /-- The report and the ratchet checks of one run against one baseline file (stdout/stderr and the exit code). -/
 def report (m : Measure) (args : List String) (baseFile : String) : IO UInt32 := do
-  let { entries, counts, mass, perModule, perModuleMass, uncovered, forbidden, pinnedMass, pinned } := m
+  let { entries, counts, mass, perModule, perModuleMass, uncovered, forbidden, pinnedMass, pinned, carved } := m
   let base ← readLines baseFile
   if entries == 0 then IO.println "closure gate: no entry points yet (scripts/closure-entries.txt is empty: the exports arrive with the ABI); measured nothing"
   IO.println "closure gate: definitions reachable from the entry points, by class"
-  for c in ["spec", "boundary", "toolchain", "UNVERIFIED"] do
+  for c in ["spec", "boundary", "carveout", "toolchain", "UNVERIFIED"] do
     IO.println s!"  {c}: {counts.getD c 0}"
   let mods := perModule.toList.toArray.qsort (fun a b => a.2 > b.2 || (a.2 == b.2 && a.1 < b.1))
   IO.println "code mass (expression nodes; a count of definitions can be moved by merging or splitting, mass cannot):"
-  for c in ["spec", "boundary", "toolchain", "UNVERIFIED"] do
+  for c in ["spec", "boundary", "carveout", "toolchain", "UNVERIFIED"] do
     IO.println s!"  {c}: {mass.getD c 0}"
   let (sm, em) := shareOf mass
   let floor? := shareFloor base
   IO.println "closure gate: DEFINITIONS: executed mass = expression nodes of every definition reachable from the entry points, classes spec+boundary+UNVERIFIED (toolchain and the C runtime excluded); specified share = spec mass / executed mass"
   for (r, st, why, pm, cl) in pinned do
     IO.println s!"closure gate: pinned library {r}: {st}{if st == "ok" then " (rev and spec_hash match scripts/pinned-libs.lock)" else if st == "absent" then " (in the lock, not adopted)" else s!" ({why})"}; reached mass {pm}, counted as {if pm == 0 then "nothing" else cl}{if pm > 0 && cl != "spec" then " (unverified glue: the ratchets fail)" else ""}"
+  IO.println s!"closure gate: carve-outs: {mass.getD "carveout" 0} nodes ({", ".intercalate (carved.toList.map fun (n, _) => n.toString)}); outside the share, ratcheted by carveout_mass"
   IO.println s!"closure gate: spec {sm} | boundary {mass.getD "boundary" 0} | unverified {mass.getD "UNVERIFIED" 0} | total {em} | deciding: n/a (the deciding-code detector is not yet ported) | specified share {pct sm em} (floor {match floor? with | some (s0, t0) => pct s0 t0 | none => "none"})"
   IO.println s!"  (of the spec mass, {pinnedMass} is a verified pinned library's, the rest is LeanSse's)"
   IO.println s!"  specified share = spec mass {sm} / executed mass {em} (spec+boundary+UNVERIFIED; the toolchain's {mass.getD "toolchain" 0} is outside it). Not counted at all: the C runtime (runtime/runtime.c) and the bindings."
@@ -247,9 +255,12 @@ def report (m : Measure) (args : List String) (baseFile : String) : IO UInt32 :=
   match baseMap.get? "dep_mass" with
   | some b => if pinnedMass > b then IO.eprintln s!"closure gate: the pinned libraries' reached mass grew from {b} to {pinnedMass} expression nodes (a new pin, or more of it reached, is a reviewed edit of the baseline)"; bad := bad + 1
   | none => IO.eprintln s!"closure gate: {baseFile} has no dep_mass line"; bad := bad + 1
+  match baseMap.get? "carveout_mass" with
+  | some b => if mass.getD "carveout" 0 > b then IO.eprintln s!"closure gate: the carve-outs grew from {b} to {mass.getD "carveout" 0} expression nodes (a carve-out may be neither added nor widened without approval)"; bad := bad + 1
+  | none => if mass.getD "carveout" 0 > 0 then IO.eprintln s!"closure gate: {baseFile} has no carveout_mass line"; bad := bad + 1
   if args.contains "--write" then
     if bad != 0 then IO.eprintln "closure gate: --write refuses to write a baseline that fails the ratchets (a worsening is a deliberate, owner-approved edit of the file)"; return 1
-    IO.FS.writeFile baseFile ("# unverified definitions reachable from the entry points, per module (scripts/ClosureGate.lean); may only fall\n" ++ String.intercalate "\n" (mods.toList.map fun (m, k) => s!"{m} {k}") ++ s!"{if mods.isEmpty then "" else "\n"}mass {mass.getD "UNVERIFIED" 0}\ndep_mass {pinnedMass}\nspecified_share {sm} {em}\n")
+    IO.FS.writeFile baseFile ("# unverified definitions reachable from the entry points, per module (scripts/ClosureGate.lean); may only fall\n" ++ String.intercalate "\n" (mods.toList.map fun (m, k) => s!"{m} {k}") ++ s!"{if mods.isEmpty then "" else "\n"}mass {mass.getD "UNVERIFIED" 0}\ndep_mass {pinnedMass}\ncarveout_mass {mass.getD "carveout" 0}\nspecified_share {sm} {em}\n")
     IO.println "closure gate: baseline written"
     return 0
   if bad == 0 then
@@ -268,11 +279,11 @@ def selfTests : IO UInt32 := do
   let mut bad := 0
   let mk (spec boundary unv : Nat) (mods : List (String × Nat)) (forb : Array Name := #[]) : Measure :=
     { entries := 1, counts := {}, perModule := Std.HashMap.ofList mods, perModuleMass := {}, uncovered := #[], forbidden := forb
-      mass := Std.HashMap.ofList [("spec", spec), ("boundary", boundary), ("UNVERIFIED", unv), ("toolchain", 50)], pinnedMass := 30 }
+      mass := Std.HashMap.ofList [("spec", spec), ("boundary", boundary), ("UNVERIFIED", unv), ("toolchain", 50), ("carveout", 36)], pinnedMass := 30 }
   let m := mk 100 10 5 [("Abi.Shim", 2)]
   let (sm, em) := shareOf m.mass
-  let base (share : List String) (mass : Nat := 5) (mods : List String := ["Abi.Shim 2"]) (dep : List String := ["dep_mass 30"]) : IO Unit :=
-    IO.FS.writeFile cb ("\n".intercalate (mods ++ [s!"mass {mass}"] ++ dep ++ share) ++ "\n")
+  let base (share : List String) (mass : Nat := 5) (mods : List String := ["Abi.Shim 2"]) (dep : List String := ["dep_mass 30"]) (carve : List String := ["carveout_mass 36"]) : IO Unit :=
+    IO.FS.writeFile cb ("\n".intercalate (mods ++ [s!"mass {mass}"] ++ dep ++ carve ++ share) ++ "\n")
   let run (mm : Measure) (extra : List String := []) : IO (UInt32 × String) := do
     let (out, r) ← IO.FS.withIsolatedStreams (report mm (["--baseline", cbs] ++ extra) cbs)
     return (r, out)
@@ -296,6 +307,12 @@ def selfTests : IO UInt32 := do
   expect := expect ++ [(r != 0 && has o "pinned libraries' reached mass grew", "the closure gate accepts a grown pinned-library mass")]
   base [s!"specified_share {sm} {em}"] (dep := []); let (r, _) ← run m
   expect := expect ++ [(r != 0, "the closure gate accepts a baseline with no dep_mass line")]
+  -- the carve-outs: their mass is ratcheted (a grown mass fails; a baseline with no carveout_mass line fails while any carve-out is reached) and it is OUTSIDE the executed mass (the share's denominator)
+  base [s!"specified_share {sm} {em}"] (carve := ["carveout_mass 35"]); let (r, o) ← run m
+  expect := expect ++ [(r != 0 && has o "the carve-outs grew", "the closure gate accepts widened carve-outs")]
+  base [s!"specified_share {sm} {em}"] (carve := []); let (r, _) ← run m
+  expect := expect ++ [(r != 0, "the closure gate accepts carve-outs with no carveout_mass baseline line")]
+  expect := expect ++ [(execMass m.mass == 115, "the carve-outs' mass leaked into the executed mass (the share's denominator)")]
   -- the specified share: a fall fails (a real fall of the spec mass, and a floor above the measure), a missing floor fails
   let (r, _) ← run (mk 99 10 5 [("Abi.Shim", 2)])
   expect := expect ++ [(r != 0, "the specified-share ratchet cannot fail on a synthetic fall of the spec mass")]

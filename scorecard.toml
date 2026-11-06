@@ -26,6 +26,11 @@ allow_marker = "tier1-allow"
 closure_cmd = 'cp -a /subject /tmp/w && cd /tmp/w && lake build LeanSse LeanSseProofs >/dev/null 2>&1 && lake env lean --run scripts/ClosureGate.lean'
 closure_regex = 'specified share ([0-9.]+)%'
 closure_timeout_seconds = 900
+# DECISIONS 20 of the scorecard: the share is over everything OUTSIDE the named carve-outs (floor 100); a carve-out needs its trust-ledger entry, protected files and a mass that may only shrink
+carveouts = "scripts/carveouts.txt"
+carveouts_protected = "scripts/protected-paths.txt"
+carveouts_regex = 'carve-outs: ([0-9]+) nodes'
+carveouts_baseline = "scripts/closure-baseline.txt"
 axiom_cmd = 'cp -a /subject /tmp/w && cd /tmp/w && lake build LeanSse LeanSseProofs >/dev/null 2>&1 && lake env lean --run scripts/AxiomGate.lean'
 axiom_regex = 'axiom gate: [0-9]+ constants checked, ([0-9]+) offending'
 axiom_timeout_seconds = 900

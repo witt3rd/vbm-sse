@@ -41,6 +41,8 @@ scripts/trust-ledger-check.sh
 scripts/trust_ledger.py
 scripts/closure-baseline.txt
 scripts/closure-entries.txt
+# The carve-outs: the list of trusted boundary declarations that are outside the specified share (each needs a trust-ledger entry; adding or widening one is a protected change)
+scripts/carveouts.txt
 scripts/ledger-baseline.txt
 scripts/ledger-bridges.txt
 scripts/lint-pipefail.sh
