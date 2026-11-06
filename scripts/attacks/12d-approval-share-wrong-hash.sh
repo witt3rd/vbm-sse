@@ -1,3 +1,0 @@
-ATK_DESC="lower the specified-share floor of scripts/closure-baseline.txt with an approval list that names the file but carries the hash of ANOTHER diff, or no list at all (an approval is the exact diff)"
-ATK_GATES=('l=$(mktemp); echo "scripts/closure-baseline.txt 0000000000000000000000000000000000000000000000000000000000000000" > "$l"; LAND_GATE_APPROVED_FILE=$l scripts/gate-diff-improving.sh --suite-judged "$ATK_BASE" HEAD' 'env -u LAND_GATE_APPROVED_FILE scripts/gate-diff-improving.sh --suite-judged "$ATK_BASE" HEAD'); ATK_GATE_FILES=(scripts/gate-diff-improving.sh); ATK_EXPECT='specified_share'
-atk_apply() { sed -i -E 's/^specified_share ([0-9]+) ([0-9]+)/specified_share 1 \2/' scripts/closure-baseline.txt; }

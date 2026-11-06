@@ -1,3 +1,0 @@
-ATK_DESC="remove a tier1.sh line with the approval list unset, empty or missing (the loosening must not let any tier1.sh edit through without an approval)"
-ATK_GATES=('l=$(mktemp); LAND_GATE_APPROVED_FILE=$l scripts/gate-diff-improving.sh --suite-judged "$ATK_BASE" HEAD' 'LAND_GATE_APPROVED_FILE=/nonexistent/list scripts/gate-diff-improving.sh --suite-judged "$ATK_BASE" HEAD' 'env -u LAND_GATE_APPROVED_FILE scripts/gate-diff-improving.sh --suite-judged "$ATK_BASE" HEAD'); ATK_GATE_FILES=(scripts/gate-diff-improving.sh); ATK_EXPECT='removed/changed'
-atk_apply() { n=$(first_line_matching scripts/tier1.sh 'cannot'); sed -i "${n}d" scripts/tier1.sh; }

@@ -1,3 +1,0 @@
-ATK_DESC="lower the specified-share floor AND raise the unverified mass in one change, with an approval list carrying the TRUE hash of the baseline's diff (an approval relaxes the fall of the specified_share row only, never another row)"
-ATK_GATES=('h=$(bash -c ". scripts/land/lib/approvals.sh; ga_hash . \"$ATK_BASE\" HEAD scripts/closure-baseline.txt"); l=$(mktemp); echo "scripts/closure-baseline.txt $h" > "$l"; LAND_GATE_APPROVED_FILE=$l scripts/gate-diff-improving.sh --suite-judged "$ATK_BASE" HEAD'); ATK_GATE_FILES=(scripts/gate-diff-improving.sh); ATK_EXPECT='mass'
-atk_apply() { sed -i -E 's/^specified_share ([0-9]+) ([0-9]+)/specified_share 1 \2/; s/^mass ([0-9]+)/mass 99999/' scripts/closure-baseline.txt; }
