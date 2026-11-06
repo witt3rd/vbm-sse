@@ -181,8 +181,47 @@ def feedBulk (c : ByteArray) (i : Nat) (s : FSt) : FSt :=
 termination_by c.size - i
 decreasing_by all_goals omega
 
-/-- A chunk through the machine: the events it completed are appended to `out`. -/
-def feedF (s : FSt) (c : ByteArray) : FSt := feedBulk c 0 s
+/-- The state of `feedBulk` with every field a separate argument of the loop (the held line, the data buffer, its flag, the type, the id buffer, the last event id, the retry time, the events). The same machine,
+`feedFast_eq` (proofs) says so; what changes is what the compiled loop allocates: the common line (a `data` line that is cut from the chunk, a blank line that dispatches) updates the arguments and builds no state record,
+no pair and no option; only the event itself and the copy of a data value are allocated. Any other case builds the record and takes the step of `feedBulk`. -/
+def feedFast (c : ByteArray) (i : Nat) (bom : Nat) (skipLF : Bool) (line data : ByteArray) (hasData : Bool) (type idBuf lastId : ByteArray) (retry : Option UInt64) (out : Array FEvent) : FSt :=
+  if h : i < c.size then
+    if bom < 3 then
+      let t := stepF ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, out⟩ c[i]
+      feedFast c (i + 1) t.bom t.skipLF t.line t.p.data t.p.hasData t.p.type t.p.idBuf t.p.lastEventId t.p.retry t.out
+    else
+      match hj : scanFast c i with
+      | j =>
+        if h2 : i < j then
+          if h3 : line.size = 0 ∧ j < c.size then
+            if h4 : c[i]'(by omega) = COLON then
+              feedFast c (j + 1) bom ((c[j]'h3.2) == CR) ByteArray.empty data hasData type idBuf lastId retry out
+            else
+              let k := colonFrom c j (by omega) i
+              let vs := valStart c j (by omega) k
+              if isDataAt c i k then
+                if hasData then feedFast c (j + 1) bom ((c[j]'h3.2) == CR) ByteArray.empty (c.copySlice vs (data.push LF) (data.size + 1) (j - vs) false) true type idBuf lastId retry out
+                else feedFast c (j + 1) bom ((c[j]'h3.2) == CR) ByteArray.empty (c.extract vs j) true type idBuf lastId retry out
+              else
+                let p := applyFieldS ⟨data, hasData, type, idBuf, lastId, retry⟩ c i k vs j
+                feedFast c (j + 1) bom ((c[j]'h3.2) == CR) ByteArray.empty p.data p.hasData p.type p.idBuf p.lastEventId p.retry out
+          else feedFast c j bom false (c.copySlice i line line.size (j - i) false) data hasData type idBuf lastId retry out
+        else
+          if line.size = 0 ∧ !(skipLF && c[i] == LF) then
+            -- a blank line: dispatch (`dispatchF`), the held line is empty
+            if hasData then feedFast c (i + 1) bom (c[i] == CR) ByteArray.empty ByteArray.empty false ByteArray.empty idBuf idBuf retry (out.push ⟨if type.size = 0 then tMessageB else type, data, idBuf⟩)
+            else feedFast c (i + 1) bom (c[i] == CR) ByteArray.empty data false ByteArray.empty idBuf idBuf retry out
+          else
+            let t := stepF ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, out⟩ c[i]
+            feedFast c (i + 1) t.bom t.skipLF t.line t.p.data t.p.hasData t.p.type t.p.idBuf t.p.lastEventId t.p.retry t.out
+  else ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, out⟩
+termination_by c.size - i
+decreasing_by all_goals omega
+
+/-- A chunk through the machine: the events it completed are appended to `out`. (`feedFast`: the loop of `feedBulk` on unpacked state; `feedF_eq`.) -/
+def feedF (s : FSt) (c : ByteArray) : FSt :=
+  match s with
+  | ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, out⟩ => feedFast c 0 bom skipLF line data hasData type idBuf lastId retry out
 
 /-- A stream given as a list of chunks. -/
 def feedChunksF (s : FSt) (cs : List ByteArray) : FSt := cs.foldl feedF s
