@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Tier 1: scripts/land-direct (docs/decisions/0002-land-direct.md) is a pinned copy of vbm-land plus this repository's scripts/land.conf and scripts/land.d/ hooks. The lander's own
-# behaviour (lock, lease, rebase, three tries, plain push, bounded steps, hold, freeze, red modes, regeneration, hooks, exit codes) is tested in vbm-land against every release; THIS test
-# is about what this repository adds and depends on, with the REAL stub, config and hooks in a scratch repository (a local bare remote, a gh shim, a mise shim, stand-in gates):
+# behaviour (rebase, the retry loop, plain push, bounded steps, hold, freeze, regeneration, hooks, exit codes) is tested in vbm-land against every release; THIS test
+# is about what this repository adds and depends on, with the REAL stub, config and hooks in a scratch repository (a local bare remote, a mise shim, stand-in gates):
 #  the vendored copy is intact (scripts/land/bin/land-check) and a tampered copy, a stray file and an edited stub each FAIL the check and are refused by the lander (12); a commit lands as itself
 #  (no branch, no PR, linear, one JSON line with specified_share); a conflicting rebase aborts naming the file; a baseline conflict regenerates by itself and a worsening one stops (12); a failing
-#  Tier 1 lands nothing; the hold marker stops it; a red main blocks all but a fix(ci): commit, except a red that is infrastructure; a bad subject and a production diff over 150 lines without
+#  Tier 1 lands nothing; the hold marker stops it; a bad subject and a production diff over 150 lines without
 #  a Diff-Budget trailer stop; the gate-diff judge (main's copy: a change cannot replace it) refuses with 12; the relabel-attack suite runs exactly when a gate-defining file is touched and refuses with 12.
 #  Negative self-test: the no-force scan is shown to catch a force push in a fixture.
 export LC_ALL=C
@@ -16,7 +16,7 @@ fail() { echo "tier1: land-direct: $*" >&2; exit 1; }
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT; export T
 # 0. the vendored copy is what its pin says; the check can fail (a tampered file, a stray file, an edited stub, an unpinned hook name); no force or delete push in anything that pushes
 scripts/land/bin/land-check >/dev/null && ran_case || fail "the vendored copy of vbm-land differs from its pin (scripts/land/bin/land-check): edit vbm-land, not the copy"
-for tamper in "echo '# local patch' >> scripts/land/bin/land-red" "echo x > scripts/land/lib/stray.sh" "echo 'exit 0' > scripts/land-direct" "rm scripts/land/lib/infra-re.sh" "echo ':' > scripts/land.d/post-rebasee; chmod +x scripts/land.d/post-rebasee"; do
+for tamper in "echo '# local patch' >> scripts/land/bin/land-revert" "echo x > scripts/land/lib/stray.sh" "echo 'exit 0' > scripts/land-direct" "rm scripts/land/lib/infra-re.sh" "echo ':' > scripts/land.d/post-rebasee; chmod +x scripts/land.d/post-rebasee"; do
   rm -rf "$T/v"; mkdir -p "$T/v/scripts"; cp -a scripts/land scripts/land-direct scripts/land.conf scripts/land.d "$T/v/scripts/"; cp -a .agents "$T/v/"; ( cd "$T/v" && bash -c "$tamper" )
   if "$T/v/scripts/land/bin/land-check" --root "$T/v" >/dev/null 2>&1; then fail "negative self-test: land-check passes a tampered copy ($tamper)"; fi
 done
@@ -25,19 +25,9 @@ noforce() { grep -v '^[[:space:]]*#' "$1" | grep -E -- '--force|--mirror|--delet
 [ -z "$(noforce scripts/land/bin/land-direct)" ] && ran_case || fail "the vendored lander contains a force/delete push: $(noforce scripts/land/bin/land-direct)"
 printf 'git push --force-with-lease origin x\n' > "$T/forced.sh"; [ -n "$(noforce "$T/forced.sh")" ] && ran_case || fail "negative self-test: the no-force scan missed a force push"
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
-# shims: mise (runs what follows `--`), gh (answers from files in $T in the shape the red check asks for)
+# shims: mise (runs what follows `--`)
 mkdir -p "$T/bin"; printf '#!/bin/sh\n[ "$1" = exec ] && shift; [ "$1" = -- ] && shift; exec "$@"\n' > "$T/bin/mise"
-cat > "$T/bin/gh" <<'SH'
-#!/bin/bash
-US=$(printf '\037')
-case "$1 $2" in
-  "run list") [ -s "$T/latest" ] && cat "$T/latest";;
-  "run view") case " $* " in *" --log-failed "*) cat "$T/log" 2>/dev/null || true;; *) cat "$T/jobs" 2>/dev/null || true;; esac;;
-  "api repos/{owner}/{repo}/check-runs/77/annotations") cat "$T/annot" 2>/dev/null || true;;
-esac
-exit 0
-SH
-chmod +x "$T/bin/mise" "$T/bin/gh"; export PATH="$T/bin:$PATH" GH="$T/bin/gh"
+chmod +x "$T/bin/mise"; export PATH="$T/bin:$PATH"
 git init -q --bare -b main "$T/remote.git"; git -C "$T/remote.git" config receive.denyNonFastForwards true
 printf '#!/bin/sh\necho "$1 $2 $3" >> "$T/updates"\n' > "$T/remote.git/hooks/update"; chmod +x "$T/remote.git/hooks/update"
 git clone -q "$T/remote.git" "$T/work" 2>/dev/null; cd "$T/work"; git config core.hooksPath /dev/null
@@ -46,7 +36,6 @@ git clone -q "$T/remote.git" "$T/other" 2>/dev/null; git -C "$T/other" config co
 mkdir -p scripts; cp -a "$src/scripts/land" "$src/scripts/land-direct" "$src/scripts/land.conf" "$src/scripts/land.d" scripts/; cp -a "$src/.agents" .
 sed -i '/^LAND_PROTECTED_LIST=/d' scripts/land.conf   # the lander-mechanics fixture has stand-in gates and no protected-paths list of its own: the list rule is judged on the real repository, not here
 sed -i 's/^LAND_STEP_TIMEOUT=.*/LAND_STEP_TIMEOUT=120/' scripts/land.conf
-sed -i 's/^LAND_RED_MODE=.*/LAND_RED_MODE=push/' scripts/land.conf   # the red tests below need the push mode, whatever the repository's own conf says (it is off until its first CI run exists)
 cat > scripts/tier1.sh <<'SH'
 test ! -e BAD || { echo "BAD exists" >&2; exit 1; }
 echo "closure gate: spec 4 | boundary 0 | unverified 1 | total 5 | specified share 80.00% (floor 80.00%)"
@@ -95,13 +84,6 @@ sync t; touch BAD; cm t; m0=$(main); run; [ "$rc" = 13 ] && [ "$(jf result)" = t
 # 5. the hold marker stops it (14)
 sync h; echo h > h.txt; cm h; m0=$(main); "$land" --hold "maintenance" >/dev/null; run; [ "$rc" = 14 ] && [ "$(jf result)" = held ] && [ "$(main)" = "$m0" ] && ran_case || fail "the hold did not stop a landing (exit $rc)"
 "$land" --release >/dev/null; run; [ "$rc" = 0 ] && ran_case || fail "released hold: $(cat "$T/out")"
-# 6. a red main blocks all but a fix(ci): commit, except a red that is infrastructure
-US=$(printf '\037'); printf '5%sdeadbeefdeadbeef%ssome title\n' "$US" "$US" > "$T/latest"; printf 'tier1%sfailure%s77\n' "$US" "$US" > "$T/jobs"; echo "tests failed: real" > "$T/log"; : > "$T/annot"
-sync r1; echo r1 > r1.txt; cm r1; m0=$(main); run; [ "$rc" = 10 ] && [ "$(jf result)" = blocked-red ] && [ "$(main)" = "$m0" ] && ran_case || fail "a red main did not block (exit $rc): $(cat "$T/out")"
-sync r2; echo r2 > r2.txt; cm r2 "fix(ci): repair the build"; run; [ "$rc" = 0 ] && grep -q "is the fix" "$T/out" && ran_case || fail "a fix(ci) commit did not land on a red main (exit $rc): $(cat "$T/out")"
-sync r3; echo r3 > r3.txt; cm r3; echo "The job was not started because recent account payments have failed" > "$T/annot"
-run; [ "$rc" = 0 ] && grep -q "infrastructure" "$T/out" && ran_case || fail "an infrastructure failure counted as red (exit $rc): $(cat "$T/out")"
-rm -f "$T/latest" "$T/jobs" "$T/annot" "$T/log"
 # 7. land-time checks: a non-Conventional subject (1), over 150 production lines (under LeanSse/) without a Diff-Budget trailer (1), with one it lands
 sync s1; echo s > s.txt; cm s "not conventional"; m0=$(main); run; [ "$rc" = 1 ] && [ "$(main)" = "$m0" ] && grep -q "Conventional" "$T/out" && ran_case || fail "a bad subject was not stopped (exit $rc)"
 sync p1; mkdir -p LeanSse; seq 1 200 > LeanSse/big.lean; cm p1; m0=$(main); run; [ "$rc" = 1 ] && [ "$(main)" = "$m0" ] && grep -q "150-line budget" "$T/out" && ran_case || fail "a 200-line production diff was not stopped (exit $rc)"
@@ -114,7 +96,7 @@ echo "scripts/tier1.sh" > "$T/touched"; sync j4; echo j4 > j4.txt; cm j4; run; [
 echo 1 > "$T/relabelrc"; sync j5; echo j5 > j5.txt; cm j5; m0=$(main); run; [ "$rc" = 12 ] && [ "$(main)" = "$m0" ] && grep -q "relabel-attack suite fails" "$T/out" && ran_case || fail "a failing relabel suite did not stop the landing with 12 (exit $rc): $(cat "$T/out")"
 rm -f "$T/relabelrc" "$T/touched"
 # 9. the lander refuses a change that edits its own vendored copy, or adds a file to it (12)
-sync v1; echo '# local patch' >> scripts/land/bin/land-red; cm v1 "fix(land): patch the vendored copy"; m0=$(main); run; [ "$rc" = 12 ] && [ "$(main)" = "$m0" ] && grep -q "differs from its pin" "$T/out" && ran_case || fail "an edit of the vendored copy was not stopped (exit $rc): $(cat "$T/out")"
+sync v1; echo '# local patch' >> scripts/land/bin/land-revert; cm v1 "fix(land): patch the vendored copy"; m0=$(main); run; [ "$rc" = 12 ] && [ "$(main)" = "$m0" ] && grep -q "differs from its pin" "$T/out" && ran_case || fail "an edit of the vendored copy was not stopped (exit $rc): $(cat "$T/out")"
 sync v2; echo '# stray' > scripts/land/lib/stray.sh; cm v2 "chore(land): stray file"; run; [ "$rc" = 12 ] && [ "$(main)" = "$m0" ] && ran_case || fail "a stray file in the vendored tree was not stopped (exit $rc)"
 ran_done test_land_direct
-echo "tier1: land-direct: the vendored lander is intact and each tamper fails the check; lands as itself; conflict, worsening baseline, failing Tier 1, hold, red main (and its infrastructure exception), bad subject and size budget stop; the gate-diff judge (main's copy) and the relabel suite (only for a gate-defining change) refuse with 12; an edit of the vendored copy is refused: ok"
+echo "tier1: land-direct: the vendored lander is intact and each tamper fails the check; lands as itself; conflict, worsening baseline, failing Tier 1, hold, bad subject and size budget stop; the gate-diff judge (main's copy) and the relabel suite (only for a gate-defining change) refuse with 12; an edit of the vendored copy is refused: ok"
