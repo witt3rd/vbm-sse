@@ -1,0 +1,1 @@
+docs/trust-ledger.md,scorecard.toml,scripts/ClosureGate.lean,scripts/carveouts.txt,scripts/closure-baseline.txt,scripts/protected-paths.txt | bf3c67d6105d69891e20175da4c25c8cb92f0f9c0fb3f618c825e6b13745abea | carve-outs step C: the four vbm-simd shims as documented carve-outs, main approved by exact hash | 2026-11-06
