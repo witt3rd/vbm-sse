@@ -1,0 +1,1 @@
+scripts/attacks/15a-carveout-widened.sh,scripts/gate-diff-improving.sh,scripts/test_gate_diff_improving.sh | 9b4f1c39ccb514787f27f51fa1dd7e7a87c1c000c9b2b6cbdd5fbd19f6e0636a | carve-outs step 1: carveout_mass is a shrink-only ratchet row + attack 15a (tightening) | 2026-11-06
