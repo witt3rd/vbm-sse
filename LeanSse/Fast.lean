@@ -207,7 +207,10 @@ def feedFast (c : ByteArray) (i : Nat) (bom : Nat) (skipLF : Bool) (line data : 
                 feedFast c (j + 1) bom ((c[j]'h3.2) == CR) ByteArray.empty p.data p.hasData p.type p.idBuf p.lastEventId p.retry out
           else feedFast c j bom false (c.copySlice i line line.size (j - i) false) data hasData type idBuf lastId retry out
         else
-          if line.size = 0 ∧ !(skipLF && c[i] == LF) then
+          if skipLF && c[i] == LF then
+            -- the LF of a CR LF: nothing but the flag
+            feedFast c (i + 1) bom false line data hasData type idBuf lastId retry out
+          else if line.size = 0 then
             -- a blank line: dispatch (`dispatchF`), the held line is empty
             if hasData then feedFast c (i + 1) bom (c[i] == CR) ByteArray.empty ByteArray.empty false ByteArray.empty idBuf idBuf retry (out.push ⟨if type.size = 0 then tMessageB else type, data, idBuf⟩)
             else feedFast c (i + 1) bom (c[i] == CR) ByteArray.empty data false ByteArray.empty idBuf idBuf retry out
@@ -218,10 +221,12 @@ def feedFast (c : ByteArray) (i : Nat) (bom : Nat) (skipLF : Bool) (line data : 
 termination_by c.size - i
 decreasing_by all_goals omega
 
-/-- A chunk through the machine: the events it completed are appended to `out`. (`feedFast`: the loop of `feedBulk` on unpacked state; `feedF_eq`.) -/
+/-- A chunk through the machine: the events it completed are appended to `out`. A chunk of 64 bytes or more runs `feedFast`, the loop of `feedBulk` on unpacked state (a chunk of a few bytes would pay more for taking the state apart and putting it back than the loop saves); `feedF_eq`. -/
 def feedF (s : FSt) (c : ByteArray) : FSt :=
-  match s with
-  | ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, out⟩ => feedFast c 0 bom skipLF line data hasData type idBuf lastId retry out
+  if 64 ≤ c.size then
+    match s with
+    | ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, out⟩ => feedFast c 0 bom skipLF line data hasData type idBuf lastId retry out
+  else feedBulk c 0 s
 
 /-- A stream given as a list of chunks. -/
 def feedChunksF (s : FSt) (cs : List ByteArray) : FSt := cs.foldl feedF s
