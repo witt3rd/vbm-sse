@@ -1,1 +1,2 @@
 docs/trust-ledger.md,scorecard.toml,scripts/ClosureGate.lean,scripts/carveouts.txt,scripts/closure-baseline.txt,scripts/protected-paths.txt | bf3c67d6105d69891e20175da4c25c8cb92f0f9c0fb3f618c825e6b13745abea | carve-outs step C: the four vbm-simd shims as documented carve-outs, main approved by exact hash | 2026-11-06
+scripts/closure-baseline.txt | 9cfb6a4e1c57121d50724b73afc7b600ac3d9bc32ac09743f477fda942c0b3fd | carve-outs step C: the baseline hunk (old target line and old share row go, share 16000/16000, carveout_mass 36), main approved by exact hash | 2026-11-06
