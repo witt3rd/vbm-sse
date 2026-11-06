@@ -12,6 +12,9 @@ lake build LeanSse:static >/dev/null
 tc=$(lean --print-prefix)
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 cf=(-ffreestanding -nostdlib -nostdlibinc -fno-stack-protector -fno-builtin -ffunction-sections -fdata-sections -O2 -fPIC -DNDEBUG -I"$here/runtime/include" -I"$tc/include")
+# aarch64: clang defaults to "outline atomics" (calls to __aarch64_cas4_acq_rel, __aarch64_ldadd4_relax: libgcc/compiler-rt helpers a freestanding build does not have); inline the LSE/LL-SC atomics instead.
+arch=(); [ "$(uname -m)" != aarch64 ] || arch=(-mno-outline-atomics)
+cf+=("${arch[@]}")
 objs=()
 for f in Spec Stream Fast Abi; do
   [ -f ".lake/build/ir/LeanSse/$f.c" ] || { echo "build_native: .lake/build/ir/LeanSse/$f.c missing" >&2; exit 1; }
@@ -24,7 +27,7 @@ for f in Spec Lanes Shims Find; do
   clang "${cf[@]}" -include "$dep/include/vbm_simd.h" -c "$dep/.lake/build/ir/VbmSimd/$f.c" -o "$tmp/simd$f.o"; objs+=("$tmp/simd$f.o")
 done
 # the shim is compiled as the scorecard compiles it: freestanding, with the Lean include directory only (lean_mini.h stands in for lean.h); the runtime with the stub headers
-clang -ffreestanding -nostdlib -nostdinc -ffunction-sections -fdata-sections -O2 -fPIC -DNDEBUG -Wall -Wextra -Werror -I include -I "$tc/include" -c "${VBM_ABI_C:-abi/vbm_sse.c}" -o "$tmp/abi.o"; objs+=("$tmp/abi.o")
+clang "${arch[@]}" -ffreestanding -nostdlib -nostdinc -ffunction-sections -fdata-sections -O2 -fPIC -DNDEBUG -Wall -Wextra -Werror -I include -I "$tc/include" -c "${VBM_ABI_C:-abi/vbm_sse.c}" -o "$tmp/abi.o"; objs+=("$tmp/abi.o")
 clang "${cf[@]}" -Wall -Wextra -Werror -c "${VBM_RT_C:-runtime/rt.c}" -o "$tmp/rt.o"; objs+=("$tmp/rt.o")
 for x in ${VBM_EXTRA_C:-}; do clang "${cf[@]}" -c "$x" -o "$tmp/x$(basename "$x").o"; objs+=("$tmp/x$(basename "$x").o"); done
 keep=(vbm_sse_new vbm_sse_feed vbm_sse_free ${VBM_KEEP:-})
