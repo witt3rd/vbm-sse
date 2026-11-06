@@ -3,3 +3,5 @@
 # The score is killed / (killed + survivors that are not listed here).
 LeanSse/Spec.lean:8:10:-:+	The operator is the hyphen of the word `UTF-8` inside the `/-! ... -/` block comment at the head of the file: the runner cuts line comments at `--` only, so the text of a block comment is mutated. A comment is not code.	2027-05-05
 LeanSse/Spec.lean:8:54:-:+	The operator is a hyphen of the text `multi-byte` inside the same `/-! ... -/` block comment: the runner cuts line comments at `--` only, so the text of a block comment is mutated. A comment is not code.	2027-05-05
+LeanSse/Spec.lean:1:15:-:+	The operator is the hyphen of the word `event-stream` in the `/-! ... -/` block comment at the head of the file: the runner cuts line comments at `--` only, so the text of a block comment is mutated. A comment is not code.	2027-05-05
+LeanSse/Spec.lean:10:12:-:+	The operator is the hyphen of the word `byte-level` in the same `/-! ... -/` block comment: the runner cuts line comments at `--` only, so the text of a block comment is mutated. A comment is not code.	2027-05-05
