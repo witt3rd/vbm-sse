@@ -28,7 +28,7 @@ The maintainers' own work (mostly done by AI agents in parallel worktrees) lands
 - **Every claim names the clause of the standard it is about** (`docs/spec-clauses.txt`), and only a `proved` claim in the ledger may be called verified. The proved count and the specified share are reported on every run; they should only go up.
 - **The boundary never decides.** C, loaders and bindings move bytes; what an event is, is decided in Lean.
 - **A new boundary** (an `extern`, a C file, a loader, a workflow, a tool) needs an entry in `docs/trust-ledger.md`, or Tier 1 fails.
-- **Gates and pins:** please do not edit a check, the pins or the workflows to make something pass; a maintainer reviews changes to them.
+- **Checks, pins and workflows:** please do not edit a check to make something pass.
 - **Nothing private in the tree:** the scrub gate (`scripts/scrub.py`) refuses internal names, machine paths and secret-shaped strings. No secrets in the repository; workflows run on GitHub-hosted runners only and never use `pull_request_target`.
 
 ## The maintainers' tools, in plain words

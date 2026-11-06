@@ -1,5 +1,4 @@
-# The owner approves the specification, the ABI, the trusted C, the checks, the workflows and the governance files:
-# everything under scripts/. (main is protected by a ruleset that refuses deletion and non-fast-forward updates.)
+# Code owners (for notification). Nothing waits for an owner: an agent may edit the specification, the code, the scripts, the docs and AGENTS.md and land them like any change; only the lander files and the signing keys are off limits.
 /LeanSse/                        @witt3rd
 /LeanSse.lean                    @witt3rd
 /LeanSseProofs/Ledger.lean       @witt3rd
