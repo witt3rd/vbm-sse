@@ -74,6 +74,7 @@ echo "tier1: zero-warning build: negative self-test ok (a file with a warning fa
 # The inline check above is the first version (it passes when lake is refused: the defect); scripts/check-zero-warning.sh is the check: the warning's own diagnostic is required, a clean file must pass, it prints `ran: zero-warning: 3 cases`.
 scripts/check-zero-warning.sh
 lake build LeanSse LeanSseProofs   # once, for the gates and every test (they build nothing more)
+lake build LeanSse:static vbm-sse-vectors   # also once: test_vectors, test_native, test_wasm and test_bindings each build these targets, and several cold builds in one tree race (one died with a missing .ilean: error: build failed)
 
 # 2a. The axiom gate: every constant of ours depends only on propext, Classical.choice, Quot.sound (--selftest: a non-standard axiom is rejected).
 bg axiom-gate lake env lean --run scripts/AxiomGate.lean --selftest
