@@ -38,10 +38,22 @@ def retryWord (p : FProc) : UInt64 := match p.retry with | none => 0 | some n =>
 /-- The size of the report of a state (the space the report asks for before it is written: only the capacity, never a byte). -/
 def reportSize (s : FSt) : Nat := 32 + s.p.lastEventId.size + s.out.foldl (fun n e => n + 24 + e.type.size + e.data.size + e.lastEventId.size) 0
 
+/-- Thirty-two zero bytes (four words). -/
+def zeros32 : ByteArray := let z8 := zeros7.push 0; z8 ++ z8 ++ z8 ++ z8
+
+/-- The four header words, any values: the count of events, whether a reconnection time is set, its value, the length of the last event ID. -/
+def reportHeadSlow (s : FSt) : ByteArray :=
+  pushWord (pushWord (pushWord (pushWord (ByteArray.emptyWithCapacity (reportSize s)) (UInt64.ofNat s.out.size)) (if s.p.retry.isSome then 1 else 0)) (retryWord s.p)) (UInt64.ofNat s.p.lastEventId.size)
+
+/-- The header: when every word is below 256 (a chunk that completes a few events, no reconnection time or a small one, a short ID) the four words are made in one append of zeros and four stores. -/
+def reportHead (s : FSt) : ByteArray :=
+  if s.out.size < 256 ∧ retryWord s.p < 256 ∧ s.p.lastEventId.size < 256 then
+    ((((ByteArray.emptyWithCapacity (reportSize s) ++ zeros32).set! 0 s.out.size.toUInt8).set! 8 (if s.p.retry.isSome then 1 else 0)).set! 16 (retryWord s.p).toUInt8).set! 24 s.p.lastEventId.size.toUInt8
+  else reportHeadSlow s
+
 /-- The report of a state: the header, the last event ID string, the events in `out`. -/
 def report (s : FSt) : ByteArray :=
-  let h := pushWord (pushWord (pushWord (pushWord (ByteArray.emptyWithCapacity (reportSize s)) (UInt64.ofNat s.out.size)) (if s.p.retry.isSome then 1 else 0)) (retryWord s.p)) (UInt64.ofNat s.p.lastEventId.size)
-  s.out.foldl packEvent (h ++ s.p.lastEventId)
+  s.out.foldl packEvent (reportHead s ++ s.p.lastEventId)
 
 /-- A new reader. -/
 @[export vbm_sse_lean_new] def abiNew (_ : Unit) : FSt := {}

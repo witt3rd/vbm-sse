@@ -106,13 +106,34 @@ theorem le64_ofNat (n : Nat) : le64 (UInt64.ofNat n).toNat = le64 n := by
   have h : (UInt64.ofNat n).toNat = n % 18446744073709551616 := by simp
   rw [h, le64_mod]
 
+@[simp] theorem L_zeros32 : L zeros32 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] := by
+  simp [zeros32, L, zeros7, ByteArray.data_push]
+
+theorem reportHead_L (s : FSt) : L (reportHead s) = le64 s.out.size ++ le64 (if s.p.retry.isSome then 1 else 0) ++ le64 ((s.p.retry.map UInt64.toNat).getD 0) ++ le64 s.p.lastEventId.size := by
+  have hf : (if s.p.retry.isSome = true then (1 : UInt64) else 0).toNat = if s.p.retry.isSome = true then 1 else 0 := by split <;> rfl
+  have hr : (retryWord s.p).toNat = (s.p.retry.map UInt64.toNat).getD 0 := by unfold retryWord; cases s.p.retry <;> simp
+  unfold reportHead
+  by_cases h : s.out.size < 256 ∧ retryWord s.p < 256 ∧ s.p.lastEventId.size < 256
+  · obtain ⟨h1, h2, h3⟩ := h
+    simp only [h1, h2, h3, and_self, ↓reduceIte]
+    simp only [L_append, L_set!, L_zeros32, L_length, L_empty]
+    have h2n : (retryWord s.p).toNat < 256 := by have := UInt64.lt_iff_toNat_lt.mp h2; simpa using this
+    have h2' : ((s.p.retry.map UInt64.toNat).getD 0) < 256 := by rw [← hr]; exact h2n
+    rw [← hr]
+    simp only [le64_small _ h1, le64_small _ h2n, le64_small _ h3]
+    have hif : le64 (if s.p.retry.isSome = true then 1 else 0) = [if s.p.retry.isSome = true then 1 else 0, 0, 0, 0, 0, 0, 0, 0] := by
+      split <;> simp [le64_small]
+    rw [hif]
+    simp [List.set, Nat.toUInt8]
+  · simp only [h, ↓reduceIte]
+    unfold reportHeadSlow
+    simp only [pushWord_L, L_append, L_empty, L_length, le64_ofNat, hf, hr, Array.length_toList, Option.isSome_map]
+    simp
+
 theorem report_L (s : FSt) : L (report s) = encReport (s.p.retry.map UInt64.toNat) (L s.p.lastEventId) (s.out.toList.map absE) := by
   unfold report encReport
   rw [← Array.foldl_toList, foldl_packEvent]
-  have hf : (if s.p.retry.isSome = true then (1 : UInt64) else 0).toNat = if s.p.retry.isSome = true then 1 else 0 := by split <;> rfl
-  have hr : (retryWord s.p).toNat = (s.p.retry.map UInt64.toNat).getD 0 := by unfold retryWord; cases s.p.retry <;> simp
-  simp only [pushWord_L, L_append, L_empty, L_length, le64_ofNat, hf, hr, List.length_map, Array.length_toList, Option.isSome_map]
-  simp
+  simp only [L_append, reportHead_L, L_length, List.length_map, Array.length_toList, Option.isSome_map]
 
 /-! ## The reader: what a binding does with the bytes -/
 
