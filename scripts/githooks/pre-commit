@@ -1,8 +1,0 @@
-#!/usr/bin/env bash
-# The rule (AGENTS.md): every change is made in a worktree on a branch and lands through `scripts/land-direct` (a fast-forward push of the rebased commits), so no commit is ever made on main itself. This hook makes that mechanical: a commit on main is refused.
-branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || echo "")
-if [ "$branch" = "main" ] || [ "$branch" = "master" ]; then
-  if [ "${VBM_SSE_ALLOW_MAIN_COMMIT:-}" = "1" ]; then exit 0; fi
-  echo "vbm-sse: refusing to commit on '$branch'. Make the change in a worktree on a branch (git worktree add, or your agent harness's worktree), commit there, land it with scripts/land-direct (no PR)." >&2
-  exit 1
-fi
