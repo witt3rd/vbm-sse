@@ -181,6 +181,10 @@ def feedBulk (c : ByteArray) (i : Nat) (s : FSt) : FSt :=
 termination_by c.size - i
 decreasing_by all_goals omega
 
+/-- Does the line `c[i, j)` open with `data:` (the name `data`, then the colon)? Five byte tests, nothing built: then its first colon is at `i + 4`, with no scan (`colonFrom_dataLine`). -/
+def dataLine (c : ByteArray) (i j : Nat) : Bool :=
+  if h : i + 4 < j ∧ j ≤ c.size then c[i]'(by omega) == 100 && c[i + 1]'(by omega) == 97 && c[i + 2]'(by omega) == 116 && c[i + 3]'(by omega) == 97 && c[i + 4]'(by omega) == COLON else false
+
 /-- The state of `feedBulk` with every field a separate argument of the loop (the held line, the data buffer, its flag, the type, the id buffer, the last event id, the retry time, the events). The same machine,
 `feedFast_eq` (proofs) says so; what changes is what the compiled loop allocates: the common line (a `data` line that is cut from the chunk, a blank line that dispatches) updates the arguments and builds no state record,
 no pair and no option; only the event itself and the copy of a data value are allocated. Any other case builds the record and takes the step of `feedBulk`. -/
@@ -197,14 +201,20 @@ def feedFast (c : ByteArray) (i : Nat) (bom : Nat) (skipLF : Bool) (line data : 
             if h4 : c[i]'(by omega) = COLON then
               feedFast c (j + 1) bom ((c[j]'h3.2) == CR) ByteArray.empty data hasData type idBuf lastId retry out
             else
-              let k := colonFrom c j (by omega) i
-              let vs := valStart c j (by omega) k
-              if isDataAt c i k then
+              if dataLine c i j then
+                -- a `data:` line: the colon is at i + 4, nothing is scanned for
+                let vs := valStart c j (by omega) (i + 4)
                 if hasData then feedFast c (j + 1) bom ((c[j]'h3.2) == CR) ByteArray.empty (c.copySlice vs (data.push LF) (data.size + 1) (j - vs) false) true type idBuf lastId retry out
                 else feedFast c (j + 1) bom ((c[j]'h3.2) == CR) ByteArray.empty (c.extract vs j) true type idBuf lastId retry out
               else
-                let p := applyFieldS ⟨data, hasData, type, idBuf, lastId, retry⟩ c i k vs j
-                feedFast c (j + 1) bom ((c[j]'h3.2) == CR) ByteArray.empty p.data p.hasData p.type p.idBuf p.lastEventId p.retry out
+                let k := colonFrom c j (by omega) i
+                let vs := valStart c j (by omega) k
+                if isDataAt c i k then
+                  if hasData then feedFast c (j + 1) bom ((c[j]'h3.2) == CR) ByteArray.empty (c.copySlice vs (data.push LF) (data.size + 1) (j - vs) false) true type idBuf lastId retry out
+                  else feedFast c (j + 1) bom ((c[j]'h3.2) == CR) ByteArray.empty (c.extract vs j) true type idBuf lastId retry out
+                else
+                  let p := applyFieldS ⟨data, hasData, type, idBuf, lastId, retry⟩ c i k vs j
+                  feedFast c (j + 1) bom ((c[j]'h3.2) == CR) ByteArray.empty p.data p.hasData p.type p.idBuf p.lastEventId p.retry out
           else feedFast c j bom false (c.copySlice i line line.size (j - i) false) data hasData type idBuf lastId retry out
         else
           if skipLF && c[i] == LF then

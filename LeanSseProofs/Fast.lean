@@ -586,6 +586,30 @@ theorem stepF_skip (bom : Nat) (line data : ByteArray) (hasData : Bool) (type id
   unfold stepBodyF
   simp
 
+theorem colonFrom_ne (c : ByteArray) (j : Nat) (hj : j ≤ c.size) (i : Nat) (hi : i < j) (h : ¬ c[i]'(by omega) = COLON) : colonFrom c j hj i = colonFrom c j hj (i + 1) := by
+  rw [colonFrom]; simp only [hi, ↓reduceDIte, h, ↓reduceIte]
+
+theorem colonFrom_eq (c : ByteArray) (j : Nat) (hj : j ≤ c.size) (i : Nat) (hi : i < j) (h : c[i]'(by omega) = COLON) : colonFrom c j hj i = i := by
+  rw [colonFrom]; simp only [hi, ↓reduceDIte, h, ↓reduceIte]
+
+/-- A line that opens with `data:` has its first colon at `i + 4`, and its name is `data`. -/
+theorem dataLine_colon (c : ByteArray) (i j : Nat) (hj : j ≤ c.size) (h : dataLine c i j = true) : colonFrom c j hj i = i + 4 ∧ isDataAt c i (i + 4) = true := by
+  unfold dataLine at h
+  by_cases hb : i + 4 < j ∧ j ≤ c.size
+  · simp only [hb, and_self, ↓reduceDIte, Bool.and_eq_true, beq_iff_eq] at h
+    obtain ⟨⟨⟨⟨h0, h1⟩, h2⟩, h3⟩, h4⟩ := h
+    have c0 : ¬ c[i]'(by omega) = COLON := by rw [h0]; decide
+    have c1 : ¬ c[i + 1]'(by omega) = COLON := by rw [h1]; decide
+    have c2 : ¬ c[i + 2]'(by omega) = COLON := by rw [h2]; decide
+    have c3 : ¬ c[i + 3]'(by omega) = COLON := by rw [h3]; decide
+    refine ⟨?_, ?_⟩
+    · rw [colonFrom_ne c j hj i (by omega) c0, colonFrom_ne c j hj (i + 1) (by omega) c1, colonFrom_ne c j hj (i + 2) (by omega) c2, colonFrom_ne c j hj (i + 3) (by omega) c3,
+        colonFrom_eq c j hj (i + 4) (by omega) h4]
+    · unfold isDataAt
+      simp only [show i + 4 = i + 4 ∧ i + 4 ≤ c.size from ⟨rfl, by omega⟩, and_self, ↓reduceDIte, Bool.and_eq_true, beq_iff_eq]
+      simp [h0, h1, h2, h3]
+  · simp [hb] at h
+
 /-- The loop on unpacked state is the bulk loop on the packed state. -/
 theorem feedFast_eq (c : ByteArray) (i : Nat) (bom : Nat) (skipLF : Bool) (line data : ByteArray) (hasData : Bool) (type idBuf lastId : ByteArray) (retry : Option UInt64) (out : Array FEvent) :
     feedFast c i bom skipLF line data hasData type idBuf lastId retry out = feedBulk c i ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, out⟩ := by
@@ -596,26 +620,36 @@ theorem feedFast_eq (c : ByteArray) (i : Nat) (bom : Nat) (skipLF : Bool) (line 
     rw [feedFast, feedBulk]
     simp only [h, ↓reduceDIte, hb, ↓reduceIte, h2, h3, and_self, h4, procSliceF]
     exact ih
-  | case3 i bom skipLF line data type idBuf lastId retry out h hb h4 h2 h3 k vs hD ih =>
+  | case3 i bom skipLF line data type idBuf lastId retry out h hb h4 h2 h3 hdl vs ih =>
+    obtain ⟨hk, hd⟩ := dataLine_colon c i (scanFast c i) (by omega) hdl
     rw [feedFast, feedBulk]
-    simp only [k, vs] at hD ih
-    simp only [h, ↓reduceDIte, hb, ↓reduceIte, h2, h3, and_self, h4, procSliceF, hD, applyFieldS]
+    simp only [h, ↓reduceDIte, hb, ↓reduceIte, h2, h3, and_self, h4, procSliceF, hdl, hk, applyFieldS, hd, ↓reduceIte]
     exact ih
-  | case4 i bom skipLF line data hasData type idBuf lastId retry out h hb h4 hnd h2 h3 k vs hD ih =>
-    simp only [k, vs] at hD ih
+  | case4 i bom skipLF line data hasData type idBuf lastId retry out h hb h4 hnd h2 h3 hdl vs ih =>
+    obtain ⟨hk, hd⟩ := dataLine_colon c i (scanFast c i) (by omega) hdl
     rw [feedFast, feedBulk]
+    simp only [h, ↓reduceDIte, hb, ↓reduceIte, h2, h3, and_self, h4, procSliceF, hdl, hk, applyFieldS, hd, hnd, Bool.false_eq_true, ↓reduceIte]
+    exact ih
+  | case5 i bom skipLF line data type idBuf lastId retry out h hb h4 h2 h3 hnd k vs hD ih =>
+    rw [feedFast, feedBulk]
+    simp only [k, vs] at hD ih
     simp only [h, ↓reduceDIte, hb, ↓reduceIte, h2, h3, and_self, h4, procSliceF, hD, applyFieldS, hnd, Bool.false_eq_true]
     exact ih
-  | case5 i bom skipLF line data hasData type idBuf lastId retry out h hb h4 h2 h3 k vs hD p ih =>
+  | case6 i bom skipLF line data hasData type idBuf lastId retry out h hb h4 hnd h2 h3 hdl k vs hD ih =>
+    simp only [k, vs] at hD ih
+    rw [feedFast, feedBulk]
+    simp only [h, ↓reduceDIte, hb, ↓reduceIte, h2, h3, and_self, h4, procSliceF, hD, applyFieldS, hnd, hdl, Bool.false_eq_true]
+    exact ih
+  | case7 i bom skipLF line data hasData type idBuf lastId retry out h hb h4 h2 h3 hdl k vs hD p ih =>
     simp only [k, vs, p] at hD ih
     rw [feedFast, feedBulk]
-    simp only [h, ↓reduceDIte, hb, ↓reduceIte, h2, h3, and_self, h4, procSliceF, hD]
+    simp only [h, ↓reduceDIte, hb, ↓reduceIte, h2, h3, and_self, h4, procSliceF, hD, hdl, Bool.false_eq_true]
     exact ih
-  | case6 i bom skipLF line data hasData type idBuf lastId retry out h hb h2 h3 ih =>
+  | case8 i bom skipLF line data hasData type idBuf lastId retry out h hb h2 h3 ih =>
     rw [feedFast, feedBulk]
     simp only [h, ↓reduceDIte, hb, ↓reduceIte, h2, h3]
     exact ih
-  | case7 i bom skipLF line data hasData type idBuf lastId retry out h hb hsk h2 ih =>
+  | case9 i bom skipLF line data hasData type idBuf lastId retry out h hb hsk h2 ih =>
     have hsk' : skipLF = true ∧ c[i] = LF := by simpa [Bool.and_eq_true, beq_iff_eq] using hsk
     rw [feedFast, feedBulk]
     simp only [h, ↓reduceDIte, hb, ↓reduceIte, h2, hsk]
@@ -623,7 +657,7 @@ theorem feedFast_eq (c : ByteArray) (i : Nat) (bom : Nat) (skipLF : Bool) (line 
     subst hsk1
     rw [stepF_skip bom line data hasData type idBuf lastId retry out c[i] hb hsk2]
     exact ih
-  | case8 i bom skipLF line data type idBuf lastId retry out h hb hsk hl h2 ih =>
+  | case10 i bom skipLF line data type idBuf lastId retry out h hb hsk hl h2 ih =>
     have hs := scanFast_eq c i
     have hle := scanEol_ge c i (by omega)
     have heol := scanEol_stop c i h (by rw [hs] at h2; omega)
@@ -633,7 +667,7 @@ theorem feedFast_eq (c : ByteArray) (i : Nat) (bom : Nat) (skipLF : Bool) (line 
     rw [stepF_blank bom skipLF line data true type idBuf lastId retry out c[i] hb hl heol hsk']
     simp only [↓reduceIte]
     exact ih
-  | case9 i bom skipLF line data hasData type idBuf lastId retry out h hb hsk hl hnd h2 ih =>
+  | case11 i bom skipLF line data hasData type idBuf lastId retry out h hb hsk hl hnd h2 ih =>
     have hs := scanFast_eq c i
     have hle := scanEol_ge c i (by omega)
     have heol := scanEol_stop c i h (by rw [hs] at h2; omega)
@@ -643,11 +677,11 @@ theorem feedFast_eq (c : ByteArray) (i : Nat) (bom : Nat) (skipLF : Bool) (line 
     rw [stepF_blank bom skipLF line data hasData type idBuf lastId retry out c[i] hb hl heol hsk']
     simp only [hnd, Bool.false_eq_true, ↓reduceIte]
     exact ih
-  | case10 i bom skipLF line data hasData type idBuf lastId retry out h hb hsk hl t h2 ih =>
+  | case12 i bom skipLF line data hasData type idBuf lastId retry out h hb hsk hl t h2 ih =>
     rw [feedFast, feedBulk]
     simp only [h, ↓reduceDIte, hb, ↓reduceIte, h2, hsk, hl, Bool.false_eq_true]
     exact ih
-  | case11 i bom skipLF line data hasData type idBuf lastId retry out h =>
+  | case13 i bom skipLF line data hasData type idBuf lastId retry out h =>
     rw [feedFast, feedBulk]
     simp only [h, ↓reduceDIte]
 
