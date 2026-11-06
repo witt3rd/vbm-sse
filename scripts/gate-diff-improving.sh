@@ -9,6 +9,7 @@
 #   GATE-EDIT APPROVALS: a landing that consumes an exact-diff approval ($LAND_GATE_APPROVED_FILE, set by the lander; the hash is recomputed here) relaxes (a) scripts/tier1.sh's removed/changed lines and (b)
 #                      ONLY the fall of the `specified_share` row of scripts/closure-baseline.txt and the first appearance of its `dep_mass` row (the pinned-library mass ratchet, 0 -> N); every other baseline row (and a later rise of
 #                      `dep_mass`), every list and every gate source is never relaxed by an approval.
+#   scorecard.toml: its [floors] specified_share is a ratchet: it may only rise and may not be removed (the rest of the adapter is not judged here).
 #   Generated files (docs/proof-ledger.md): accepted only when the ledger baseline moved improving, or (counts unchanged) when its render source LeanSseProofs/Ledger.lean changed
 #                      (the ledger is owner-gated by protected-set.sh).
 #   scripts/tests-map.txt (which tests a changed file selects): may only select more; `none:` gains only documentation.
@@ -171,9 +172,19 @@ def tests_map(p):
         elif k in ("all",) or k not in old: continue
     say(not why, p, "only selects more" if not why else "; ".join(why))
 
+def adapter_floor(p):
+    """The scorecard adapter's specified-share floor ([floors] specified_share) is a ratchet: it may only RISE, and it may not disappear (a floor lowered or removed is how a card is made to pass)."""
+    def floor(text):
+        m = re.search(r"(?ms)^\[floors\]\s*$(.*?)(?=^\[|\Z)", text or "")
+        v = re.search(r"^specified_share\s*=\s*([0-9.]+)\s*$", m.group(1) if m else "", re.M)
+        return float(v.group(1)) if v else None
+    old, new = floor(show(mb, p)), floor(show(head, p))
+    ok = new is not None and (old is None or new >= old)
+    say(ok, p, f"the specified-share floor {old} -> {new}" + ("" if ok else ": it may only rise (and may not be removed)"))
+
 def is_source(p): return p in SOURCE or any(p.startswith(d) for d in SOURCE_DIRS)
 if TOUCHED:
-    print("\n".join(sorted(p for p in changed if p in RULES or p in LISTS or is_source(p) or p in ("scripts/tier1.sh", "scripts/tests-map.txt")))); sys.exit(0)
+    print("\n".join(sorted(p for p in changed if p in RULES or p in LISTS or is_source(p) or p in ("scripts/tier1.sh", "scripts/tests-map.txt", "scorecard.toml")))); sys.exit(0)
 
 def protected_superset(p):
     """The protected list may only grow: every entry of the base list is still covered (scripts/protected-set.sh --superset, this copy's own)."""
@@ -190,6 +201,7 @@ for p in sorted(changed):
         if p == "scripts/ledger-baseline.txt": ledger_ok = ok
     elif p == "scripts/tier1.sh": tier1(p)
     elif p == "scripts/tests-map.txt": tests_map(p)
+    elif p == "scorecard.toml": adapter_floor(p)
     elif SUITE and p == "scripts/protected-paths.txt": protected_superset(p)
     elif (p in LISTS or is_source(p)) and SUITE: say(True, p, "a list/gate source: judged by the relabel-attack suite (scripts/relabel-attacks.sh) and baseline-monotone, not by the owner")
     elif p in LISTS or is_source(p): say(False, p, "a list/gate source: any change waits for the owner")

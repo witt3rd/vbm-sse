@@ -13,7 +13,7 @@ T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 git init -q -b main "$T/r"; cd "$T/r"; git config user.email t@t; git config user.name t; git config core.hooksPath /dev/null
 mkdir -p scripts docs LeanSseProofs
 files="scripts/closure-baseline.txt scripts/ledger-baseline.txt scripts/tier1.sh scripts/closure-entries.txt scripts/ledger-bridges.txt scripts/protected-paths.txt scripts/generated-paths.txt scripts/tests-map.txt
-scripts/ClosureGate.lean scripts/LedgerGate.lean scripts/AxiomGate.lean scripts/land-direct docs/proof-ledger.md"
+scripts/ClosureGate.lean scripts/LedgerGate.lean scripts/AxiomGate.lean scripts/land-direct docs/proof-ledger.md scorecard.toml"
 for f in $files; do cp "$root/$f" "$f"; done
 echo "LeanSse.Mod 3" >> scripts/closure-baseline.txt   # a per-module line the real baseline does not carry today (the rules cover it)
 echo "-- ledger" > LeanSseProofs/Ledger.lean; echo unrelated > docs/other.md
@@ -68,6 +68,11 @@ for f in scripts/ClosureGate.lean scripts/LedgerGate.lean scripts/AxiomGate.lean
   mut "gate source $f changed"  fail "$f"                     eval "echo '# x' >> $f"
 done
 mut "a gate source added"       fail "scripts/trust_ledger.py" eval 'echo x > scripts/trust_ledger.py'
+# the adapter's specified-share floor is a ratchet (it may only rise; it may not be removed; the rest of the adapter is not judged)
+mut "adapter floor raised"       pass "99.9"                   num 's/^specified_share = .*/specified_share = 99.9/' scorecard.toml
+mut "adapter floor lowered"      fail "may only rise"          num 's/^specified_share = .*/specified_share = 90/' scorecard.toml
+mut "adapter floor removed"      fail "may only rise"          num '/^specified_share = /d' scorecard.toml
+mut "adapter other line changed" pass "99.68"                  num 's/^window_hours = .*/window_hours = 200/' scorecard.toml
 # --suite-judged (what scripts/land-direct runs): lists and gate source are judged by the relabel-attack suite, not refused outright; everything else is judged as before
 export GDI_FLAGS=--suite-judged
 mut "suite: a list changed"             pass "judged by the relabel-attack suite" eval "echo '# x' >> scripts/closure-entries.txt"

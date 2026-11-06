@@ -138,4 +138,6 @@ attack_timeout_seconds = 1800
 window_hours = 168
 
 [floors]
-specified_share = 100
+# The floor is the closure baseline's fraction, as a ratchet: it may only RISE (scripts/gate-diff-improving.sh judges it). It is below 100 because the library's trusted boundary is part of what executes:
+# 36 expression nodes of four @[extern] shims of the pinned vbm-simd (findAvx2, hasAvx2, ld64, ctz; docs/trust-ledger.md T13 says why each stays trusted). scripts/closure-baseline.txt holds the exact fraction.
+specified_share = 99.68
