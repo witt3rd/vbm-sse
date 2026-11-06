@@ -69,10 +69,10 @@ for f in scripts/ClosureGate.lean scripts/LedgerGate.lean scripts/AxiomGate.lean
 done
 mut "a gate source added"       fail "scripts/trust_ledger.py" eval 'echo x > scripts/trust_ledger.py'
 # the adapter's specified-share floor is a ratchet (it may only rise; it may not be removed; the rest of the adapter is not judged)
-mut "adapter floor raised"       pass "99.9"                   num 's/^specified_share = .*/specified_share = 99.9/' scorecard.toml
+mut "adapter floor raised"       pass "100.5"                  num 's/^specified_share = .*/specified_share = 100.5/' scorecard.toml
 mut "adapter floor lowered"      fail "may only rise"          num 's/^specified_share = .*/specified_share = 90/' scorecard.toml
 mut "adapter floor removed"      fail "may only rise"          num '/^specified_share = /d' scorecard.toml
-mut "adapter other line changed" pass "99.68"                  num 's/^window_hours = .*/window_hours = 200/' scorecard.toml
+mut "adapter other line changed" pass "specified-share floor" num 's/^window_hours = .*/window_hours = 200/' scorecard.toml
 # --suite-judged (what scripts/land-direct runs): lists and gate source are judged by the relabel-attack suite, not refused outright; everything else is judged as before
 export GDI_FLAGS=--suite-judged
 mut "suite: a list changed"             pass "judged by the relabel-attack suite" eval "echo '# x' >> scripts/closure-entries.txt"
