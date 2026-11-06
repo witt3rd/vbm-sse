@@ -1,5 +1,6 @@
 # unverified definitions reachable from the entry points, per module (scripts/ClosureGate.lean); may only fall
-# TARGET of the specified_share floor below: the trusted boundary is exactly 36 expression nodes = the four extern shims of the pinned vbm-simd (findAvx2, hasAvx2, ld64, ctz; docs/trust-ledger.md T13 says why each stays trusted). The floor is an exact fraction: more boundary without more spec lowers the share below it and fails.
+# carveout_mass: the expression nodes of the documented carve-outs of scripts/carveouts.txt (the four @[extern] shims of the pinned vbm-simd: findAvx2, hasAvx2, ld64, ctz; docs/trust-ledger.md T13 says what each is, why it cannot be proved and how it is checked). They are OUTSIDE the specified share, which is therefore measured over everything else and has the floor 100; this mass may only fall without approval.
 mass 0
 dep_mass 3122
-specified_share 11537 11573
+carveout_mass 36
+specified_share 16000 16000

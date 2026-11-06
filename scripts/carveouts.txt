@@ -1,0 +1,4 @@
+VbmSimd.findAvx2 | T13 | scripts/pinned-libs.lock
+VbmSimd.hasAvx2 | T13 | scripts/pinned-libs.lock
+VbmSimd.ld64 | T13 | scripts/pinned-libs.lock
+VbmSimd.ctz | T13 | scripts/pinned-libs.lock
