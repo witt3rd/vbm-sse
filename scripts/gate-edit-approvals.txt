@@ -1,0 +1,1 @@
+scorecard.toml,scripts/test_gate_diff_improving.sh | 9cbcaaf15eee77e02fa0aa4fccd70c7041d2dfdfc9acf6704b35a1e68cee16ff | the adapter specified-share floor back to 100 (a floor RAISE: tightening; the 36 trusted shim nodes stay named); the test of the ratchet judge no longer depends on the old floor value; main approved by hash | 2026-11-06
