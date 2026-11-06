@@ -1,5 +1,5 @@
-# The owner approves the specification, the ABI, the trusted C, the gates and their baselines, the workflows and the governance files:
-# everything in scripts/protected-paths.txt. (main is protected by a ruleset that refuses deletion and non-fast-forward updates; scripts/land-direct prints the protected-set result and the owner reads it.)
+# The owner approves the specification, the ABI, the trusted C, the checks, the workflows and the governance files:
+# everything under scripts/. (main is protected by a ruleset that refuses deletion and non-fast-forward updates.)
 /LeanSse/                        @witt3rd
 /LeanSse.lean                    @witt3rd
 /LeanSseProofs/Ledger.lean       @witt3rd

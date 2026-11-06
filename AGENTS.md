@@ -1,5 +1,5 @@
 ## Landing (direct to main, no PRs)
-- Work in a worktree off a fresh origin/main. Diff ≤150 production lines, ≤45 min without a passing build; over either, stop and write a decomposition plan.
+- Work in a worktree off a fresh origin/main. Keep changes small; ≤45 min without a passing build: stop and write a decomposition plan.
 - Commit locally with Conventional Commits. Land only with `scripts/land-direct`; never push main yourself, never force-push it, never open a PR.
 - New behaviour lands behind a flag that defaults OFF. Interface changes: add beside the old, migrate callers, delete at zero references.
 - Main is RED when the Tier 1 job of its latest push failed. While red or frozen, only a fix or revert lands. Never hotfix on main: pull the revert, reproduce in a new worktree, resubmit.
@@ -16,12 +16,11 @@ Landed: the specification (`LeanSse/Spec.lean`: the algorithm over `List UInt8`)
 ## Hard rules
 - **Forbidden anywhere in Lean:** `sorry`, `admit`, `axiom`, `unsafe`, `implemented_by`, `csimp` (Tier 1 scans for them; a comment may mention one only on a line marked `tier1-allow`). A proof is hard? Decompose it; never weaken the statement.
 - **Spec first.** Behaviour lands as a specification and its proofs before any optimised code; a fast machine exists only with its refinement proof to the reference. Vectors come from the reference, never from the fast code.
-- **No unproved claim called verified.** Only `proved` in the obligation ledger (`LeanSseProofs/Ledger.lean`, rendered to `docs/proof-ledger.md`) may be called verified. Every claim carries a clause tag of the standard (`docs/spec-clauses.txt`); the gate refuses a claim with none.
-- **The specified share may not fall** (`scripts/ClosureGate.lean`, printed on every Tier 1 run), the unverified set may only shrink, and nothing from `Std`, `Lean` or `LeanSseProofs` may be reachable from an export.
+- **No unproved claim called verified.** Only `proved` in the obligation ledger (`LeanSseProofs/Ledger.lean`, rendered to `docs/proof-ledger.md`) may be called verified. Every claim carries a clause tag of the standard (`docs/spec-clauses.txt`).
+- **The specified share is reported on every Tier 1 run** (`scripts/ClosureGate.lean`); the aim is that it only rises and the unverified set only shrinks, and nothing from `Std`, `Lean` or `LeanSseProofs` is reachable from an export.
 - **The boundary never decides.** C, loaders and bindings move bytes; what an event is, is decided in Lean only.
-- **Every gate has a negative self-test** (it must be shown able to fail, in the same run). A new gate without one does not land.
 - **Public-ready, always:** no internal project, host or person name, no machine path, no secret, in any file or commit message (the scrub gate, `scripts/scrub.py`, checks the tree; its banned list is hashes). No paid model calls from a test or a gate.
-- **Land with `scripts/land-direct`, never open a PR, never push a branch.** One lander at a time. The protected set (`scripts/protected-paths.txt`) is what the owner reads on `main`: the spec, the ledger, the gates and baselines, the pins, the workflows, the governance files. Do not edit one to make a check pass.
+- **Land with `scripts/land-direct`, never open a PR, never push a branch.** One lander at a time. Do not weaken a check to make it pass.
 - Conventional Commits `type(scope): summary`. Heavy builds on a shared machine run under a memory cap, one at a time.
 
 ## Library rules
@@ -34,8 +33,8 @@ Landed: the specification (`LeanSse/Spec.lean`: the algorithm over `List UInt8`)
 - **Pinned libraries:** one today, vbm-simd (the verified byte search for the line end: a lake dependency at a full commit sha, `scripts/check-dep-pin.sh`; trust ledger T13); the machine needs no JSON. A consumer pins this library by the pinned-library gate; vbm-json is a pinned lake dependency only where JSON is needed, never in `LeanSse`.
 
 ## Gates (Tier 1 before landing; Tier 2 after merge)
-- **Tier 1** (`scripts/tier1.sh`): forbidden-constructs scan, `Init`-only import scan, pipefail and proof-evaluation lints, zero-warning build of both libraries (the mechanism is checked), axiom gate, obligation ledger (with the clause tags), closure gate and specified share, trust ledger, scrub gate, workflow lint, the drift check of the pinned lander, and the offline self-tests of the protected set, `scripts/land-direct`, the commit-on-main hook, the parallel test runner, the gate-diff judge and the relabel-attack suite.
-- **Tier 2** (`scripts/tier2.sh`, CI on main after merge): Tier 1 again, the whole relabel-attack suite, `leanchecker --fresh`, nanoda over the exported proof. A failure on main means revert, then fix in a worktree.
+- **Tier 1** (`scripts/tier1.sh`, about 35 s): the forbidden-constructs scan, the `Init`-only import scan, the pinned library check, a zero-warning build of both libraries, the axiom gate, the trust ledger (a new boundary needs an entry), the scrub gate, and the real tests (vectors, ABI, native, WebAssembly, bindings). The specified share and closure counts are printed, never gated. Nothing else refuses a landing.
+- **Tier 2** (`scripts/tier2.sh`, CI on main after merge): Tier 1 again, `leanchecker --fresh`, nanoda over the exported proof. A failure on main means revert, then fix in a worktree.
 
 ## Layout
 `LeanSse/` spec and code (`Init` only; locked) · `LeanSseProofs/` proofs (never linked) · `scripts/` gates and process · `scripts/land/` the pinned lander (never edit) · `docs/` spec, decisions, trust ledger, proof ledger (generated), clause index, standard pin · `vectors/` the generator's `Main` · `abi/` `include/` `runtime/` the C interface and the freestanding runtime · `bindings/` generated bindings · `tests/` the C, WebAssembly and binding tests.

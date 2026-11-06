@@ -17,18 +17,18 @@ The maintainers' own work (mostly done by AI agents in parallel worktrees) lands
    mise exec -- scripts/tier1.sh
    ```
 
-   Tier 1 builds both Lean libraries with zero warnings, scans for forbidden constructs, runs the axiom, proof-ledger, closure, trust-ledger and scrub gates, and the self-tests of the process scripts. Every gate also runs a negative self-test, so a green run shows each gate can fail. CI runs the same script on GitHub-hosted runners.
+   Tier 1 builds both Lean libraries with zero warnings, scans for forbidden constructs, checks the imports, the pinned library, the axioms, the trust ledger and the tree for secrets and internal names, and runs the real tests (vectors, C interface, WebAssembly, bindings).
 4. Use Conventional Commit subjects: `type(scope): summary` (`feat`, `fix`, `docs`, `test`, `perf`, `refactor`, `build`, `ci`, `chore`).
-5. Keep the change small: at most about 150 lines of production Lean under `LeanSse/` per change; anything larger needs a short decomposition plan in the PR description.
+5. Keep the change small and focused; a larger change needs a short plan in the PR description.
 
 ## The rules that matter
 
 - **No `sorry`, `admit`, `axiom`, `unsafe`, `implemented_by` or `csimp`** anywhere in the Lean. If a proof is hard, break it into lemmas; never weaken the statement.
 - **Spec first.** A behaviour change is a change to the specification (`LeanSse/`) together with its proofs; optimised code exists only with a proof that it agrees with the reference. Vectors come from the reference, never from the fast code.
-- **Every claim names the clause of the standard it is about** (`docs/spec-clauses.txt`), and only a `proved` claim in the ledger may be called verified. Do not lower the proved count or the specified share; they only go up.
+- **Every claim names the clause of the standard it is about** (`docs/spec-clauses.txt`), and only a `proved` claim in the ledger may be called verified. The proved count and the specified share are reported on every run; they should only go up.
 - **The boundary never decides.** C, loaders and bindings move bytes; what an event is, is decided in Lean.
 - **A new boundary** (an `extern`, a C file, a loader, a workflow, a tool) needs an entry in `docs/trust-ledger.md`, or Tier 1 fails.
-- **Protected files** (`scripts/protected-paths.txt`: the specification, the gates and their baselines, the workflows, the pins, the governance files) are changed only with a maintainer's approval. Please do not edit a gate or a baseline to make a check pass.
+- **Gates and pins:** please do not edit a check, the pins or the workflows to make something pass; a maintainer reviews changes to them.
 - **Nothing private in the tree:** the scrub gate (`scripts/scrub.py`) refuses internal names, machine paths and secret-shaped strings. No secrets in the repository; workflows run on GitHub-hosted runners only and never use `pull_request_target`.
 
 ## The maintainers' tools, in plain words

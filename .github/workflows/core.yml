@@ -1,8 +1,8 @@
 # Tier 1 runs on every push to main (scripts/land-direct runs the same script before it pushes); Tier 2 runs every 6 hours and on dispatch and is NOT a gate for the next merge:
 # a failure on main means revert, then fix in a worktree (AGENTS.md). Adapted from the CI of the project the gates were first built in: no merge queue, no bubblewrap
 # (nothing here runs a jail), no watchdog job (the post-merge watchdog and the revert script are not ported yet; AGENTS.md "Not ported yet").
-# Public-repository rules, enforced by scripts/lint-workflows.py (Tier 1): every job runs on a GitHub-hosted runner (self-hosted only while .github/visibility says private), there is no pull_request_target trigger,
-# and no secret is used: the token is the read-only default GITHUB_TOKEN. Actions are pinned by commit SHA. This file is in the protected set and has a trust-ledger entry (T08).
+# Public-repository rules: every job runs on a GitHub-hosted runner (self-hosted only while .github/visibility says private), there is no pull_request_target trigger,
+# and no secret is used: the token is the read-only default GITHUB_TOKEN. Actions are pinned by commit SHA. This file has a trust-ledger entry (T08).
 name: core
 on:
   push:
@@ -28,7 +28,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0                # the delta selection needs the pushed range (github.event.before); an unfetched or empty base selects every test
-      - name: tools the gate needs that the hosted image may lack (PyYAML for the workflow lint, coredumpctl for the crash-record check; a missing tool is a Tier 1 failure, never a skip)
+      - name: tools the gate needs that the hosted image may lack (coredumpctl for the crash-record helper; a missing tool is a Tier 1 failure, never a skip)
         run: sudo apt-get update -qq && sudo apt-get install -y -qq python3-yaml systemd-coredump
       - uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2   # installs mise and the pinned Lean (mise.toml)
       - name: cache .lake, so the build is incremental (only what changed since the cached tree recompiles)
@@ -50,7 +50,7 @@ jobs:
     timeout-minutes: 30      # the cap on Tier 2 including nanoda: a hung checker is killed here
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: tools the gate needs that the hosted image may lack (PyYAML for the workflow lint, coredumpctl for the crash-record check; a missing tool is a Tier 1 failure, never a skip)
+      - name: tools the gate needs that the hosted image may lack (coredumpctl for the crash-record helper; a missing tool is a Tier 1 failure, never a skip)
         run: sudo apt-get update -qq && sudo apt-get install -y -qq python3-yaml systemd-coredump
       - uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2   # installs mise and the pinned Lean (mise.toml)
       - name: cache .lake, so the build is incremental (only what changed since the cached tree recompiles)

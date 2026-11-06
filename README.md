@@ -53,7 +53,7 @@ with Reader() as r:
 
 ```sh
 mise install
-mise exec -- scripts/tier1.sh      # the gate: build with zero warnings, every gate with its negative self-test
+mise exec -- scripts/tier1.sh      # the check: build with zero warnings, the guards and the real tests
 ```
 
 Requires [mise](https://mise.jdx.dev) (it installs the pinned Lean, 4.35.0), `git`, `python3` with PyYAML, and a C compiler. Tier 1 also runs the WebAssembly test (`node`, 18 or later), the Rust binding test (`cargo`, 1.78 or later: the lock file is version 4; a distribution's older cargo fails) and the crash-record check (`coredumpctl`, from systemd-coredump): a check whose tool is missing is a FAILURE, not a skip, unless you say `VBM_ALLOW_SKIP=1` (the skipped part is then named as not run; Tier 2 requires every tool). A run from a clean `ubuntu:24.04` with these installed and no network after the fetch passes Tier 1 in about a minute once the toolchain is installed. Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md). Security: [`SECURITY.md`](SECURITY.md). Licence: Apache-2.0 ([`LICENSE`](LICENSE), [`NOTICE`](NOTICE)).
