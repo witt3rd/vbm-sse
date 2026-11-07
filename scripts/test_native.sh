@@ -5,7 +5,7 @@
 #      split), the argument checks, and the leak hook (the runtime's live bytes are flat over 2000 streams).
 #   3. tests/lean_layout.c: abi/lean_mini.h (the freestanding stand-in for lean.h, used by the shim here and by the scorecard's freestanding compile) agrees with lean.h.
 # NEGATIVE self-tests, in the same run: a build that links malloc (the runtime's malloc renamed away, so the object needs libc's) fails the nm check naming it; so does a file that calls printf; corrupted
-# expected events and reconnection time each fail the test; a mutated lean_mini.h tag and header layout fail the layout test; mutants of the runtime (ByteArray.push, Array.push, ByteArray.extract,
+# expected events and reconnection time each fail the test; a mutated lean_mini.h tag and header layout fail the layout test; mutants of the runtime (ByteArray.push, ByteArray.extract,
 # ByteArray equality, free) and of the shim (a dropped reference, the report's pointer, the length limit) each fail the test.
 # Run: mise exec -- scripts/test_native.sh
 set -euo pipefail
@@ -69,8 +69,7 @@ mutant() {  # mutant NAME RT|ABI FROM TO: replace FROM by TO (it must occur) in 
   must_fail "mutant $n" quiet "$tmp/m_$n/t" "$v"
 }
 bgj mutant bytepush RT 'lean_sarray_cptr(r)[sz] = b;' 'lean_sarray_cptr(r)[sz] = b + 1;'
-bgj mutant arraypush RT 'lean_array_cptr(r)[sz] = v;' 'lean_array_cptr(r)[sz] = lean_array_cptr(r)[sz ? sz - 1 : 0]; if (!sz) lean_array_cptr(r)[0] = v;'
-bgj mutant extract RT 'if (len) memcpy(lean_sarray_cptr(r), lean_sarray_cptr(a) + bi, len);' 'if (len) memcpy(lean_sarray_cptr(r), lean_sarray_cptr(a) + bi + 1, len - 1);'
+bgj mutant extract RT 'copy_apart_(lean_sarray_cptr(r), lean_sarray_cptr(a) + bi, len);' 'copy_apart_(lean_sarray_cptr(r), lean_sarray_cptr(a) + bi + 1, len ? len - 1 : 0);'
 bgj mutant sarrayeq RT 'return memcmp(lean_sarray_cptr(a), lean_sarray_cptr(b), n) == 0;' '(void)n; return 1;'
 bgj mutant nofree RT 'live_ -= c; *(void **)p = *list; *list = p;' '*(void **)p = *list; *list = p;'
 bgj mutant shim_noinc ABI '  lean_inc_ref(r->state);' '  '
@@ -80,4 +79,4 @@ bgj mutant shim_leak ABI '  if (r->report) lean_dec_ref(r->report);
   lean_dec_ref(r->state);' '  lean_dec_ref(r->state);'
 joinj
 ran_done test_native
-echo "test_native: ok (negative self-tests: a build linking malloc and one calling printf fail the nm check; a corrupted expected event and reconnection time, lean_mini.h tag, layout and count increment, and runtime mutants bytepush, arraypush, extract, sarrayeq, nofree and shim mutants noinc, report, limit, leak each fail)"
+echo "test_native: ok (negative self-tests: a build linking malloc and one calling printf fail the nm check; a corrupted expected event and reconnection time, lean_mini.h tag, layout and count increment, and runtime mutants bytepush, extract, sarrayeq, nofree and shim mutants noinc, report, limit, leak each fail)"

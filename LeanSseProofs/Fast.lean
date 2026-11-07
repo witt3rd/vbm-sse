@@ -14,7 +14,7 @@ def L (b : ByteArray) : Bytes := b.data.toList
 
 def absE (e : FEvent) : Event := ⟨L e.type, L e.data, L e.lastEventId⟩
 def absP (p : FProc) : Proc := ⟨if p.hasData then L p.data ++ [LF] else [], L p.type, L p.idBuf, L p.lastEventId, p.retry.map UInt64.toNat⟩
-/-- The state of the list machine a state of the array machine stands for (the events in `out` are not part of it). -/
+/-- The state of the list machine a state of the array machine stands for (the events in the output are not part of it). -/
 def absS (s : FSt) : St := ⟨s.bom, s.skipLF, (L s.line).reverse, absP s.p⟩
 
 theorem L_inj {a b : ByteArray} : L a = L b ↔ a = b := by
@@ -39,6 +39,117 @@ theorem L_extract_zero (a : ByteArray) (k : Nat) : L (a.extract 0 k) = (L a).tak
 theorem L_extract_end (a : ByteArray) (i : Nat) : L (a.extract i a.size) = (L a).drop i := by
   rw [L_extract, List.take_of_length_le]; simp [L_length]
 theorem L_take_size (a : ByteArray) : (L a).take a.size = L a := List.take_of_length_le (by simp [L_length])
+
+/-- A natural number as eight little-endian bytes (modulo `2^64`). -/
+def le64 (n : Nat) : Bytes := (List.range 8).map fun i => UInt8.ofNat (n / 256 ^ i % 256)
+
+theorem le64_eq (n : Nat) : le64 n = [UInt8.ofNat (n % 256), UInt8.ofNat (n / 256 % 256), UInt8.ofNat (n / 65536 % 256), UInt8.ofNat (n / 16777216 % 256),
+    UInt8.ofNat (n / 4294967296 % 256), UInt8.ofNat (n / 1099511627776 % 256), UInt8.ofNat (n / 281474976710656 % 256), UInt8.ofNat (n / 72057594037927936 % 256)] := by
+  simp [le64, List.range_succ]
+
+theorem le64_mod (n : Nat) : le64 (n % 18446744073709551616) = le64 n := by
+  rw [le64_eq, le64_eq]
+  simp only [List.cons.injEq, and_true]
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> congr 1 <;> omega
+
+theorem shr_byte (w : UInt64) (k : UInt64) (d : Nat) (hk : k.toNat < 64) (hd : d = 2 ^ k.toNat) : (w >>> k).toUInt8 = UInt8.ofNat (w.toNat / d % 256) := by
+  apply UInt8.toNat_inj.mp
+  simp [UInt64.toNat_toUInt8, UInt64.toNat_shiftRight, Nat.shiftRight_eq_div_pow, Nat.mod_eq_of_lt hk, hd]
+
+@[simp] theorem L_zeros7 : L zeros7 = [0, 0, 0, 0, 0, 0, 0] := by
+  simp [zeros7, L, ByteArray.data_push]
+
+@[simp] theorem L_emptyWithCapacity (n : Nat) : L (ByteArray.emptyWithCapacity n) = [] := rfl
+
+theorem pushWord_L_big (b : ByteArray) (w : UInt64) : L (b.push w.toUInt8 |>.push (w >>> 8).toUInt8 |>.push (w >>> 16).toUInt8 |>.push (w >>> 24).toUInt8 |>.push (w >>> 32).toUInt8
+    |>.push (w >>> 40).toUInt8 |>.push (w >>> 48).toUInt8 |>.push (w >>> 56).toUInt8) = L b ++ le64 w.toNat := by
+  rw [le64_eq]
+  simp only [L_push, List.append_assoc]
+  rw [shr_byte w 8 256 (by simp) (by simp), shr_byte w 16 65536 (by simp) (by simp), shr_byte w 24 16777216 (by simp) (by simp),
+    shr_byte w 32 4294967296 (by simp) (by simp), shr_byte w 40 1099511627776 (by simp) (by simp), shr_byte w 48 281474976710656 (by simp) (by simp),
+    shr_byte w 56 72057594037927936 (by simp) (by simp)]
+  simp only [List.cons_append, List.nil_append]
+  have h0 : w.toUInt8 = UInt8.ofNat (w.toNat % 256) := by
+    apply UInt8.toNat_inj.mp; simp [UInt64.toNat_toUInt8]
+  rw [h0]
+
+theorem pushWord_L (b : ByteArray) (w : UInt64) : L (pushWord b w) = L b ++ le64 w.toNat := by
+  unfold pushWord
+  by_cases h : w < 256
+  · have hn : w.toNat < 256 := by simpa [UInt64.lt_iff_toNat_lt] using h
+    simp only [h, ↓reduceIte, L_append, L_push, L_zeros7, List.append_assoc]
+    rw [le64_eq, Nat.div_eq_of_lt hn, show w.toNat / 65536 = 0 by omega, show w.toNat / 16777216 = 0 by omega, show w.toNat / 4294967296 = 0 by omega,
+      show w.toNat / 1099511627776 = 0 by omega, show w.toNat / 281474976710656 = 0 by omega, show w.toNat / 72057594037927936 = 0 by omega]
+    have h0 : w.toUInt8 = UInt8.ofNat (w.toNat % 256) := by
+      apply UInt8.toNat_inj.mp; simp [UInt64.toNat_toUInt8]
+    simp [h0]
+  · simp only [h, ↓reduceIte]
+    exact pushWord_L_big b w
+
+theorem pushWord_ofNat (b : ByteArray) (n : Nat) : L (pushWord b (UInt64.ofNat n)) = L b ++ le64 n := by
+  have h : (UInt64.ofNat n).toNat = n % 18446744073709551616 := by simp
+  rw [pushWord_L, h, le64_mod]
+
+/-- The layout of one event. -/
+def encEvent (e : Event) : Bytes := le64 e.type.length ++ le64 e.data.length ++ le64 e.lastEventId.length ++ e.type ++ e.data ++ e.lastEventId
+
+/-- The layout of a report: the count, whether a reconnection time is set and its value, the last event ID string, the events. -/
+def encReport (retry : Option Nat) (id : Bytes) (es : List Event) : Bytes :=
+  le64 es.length ++ le64 (if retry.isSome then 1 else 0) ++ le64 (retry.getD 0) ++ le64 id.length ++ id ++ (es.map encEvent).flatten
+
+theorem packEventSlow_L (b ty da id : ByteArray) : L (packEventSlow b ty da id) = L b ++ encEvent ⟨L ty, L da, L id⟩ := by
+  unfold packEventSlow encEvent
+  simp only [L_append, pushWord_ofNat, L_length]
+  simp [L_length, List.append_assoc]
+
+theorem L_set! (b : ByteArray) (i : Nat) (v : UInt8) : L (b.set! i v) = (L b).set i v := by
+  simp [L, ByteArray.set!, Array.set!, Array.toList_setIfInBounds]
+
+@[simp] theorem L_zeros24 : L zeros24 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] := by
+  simp [zeros24, L, zeros7, ByteArray.data_push]
+
+theorem le64_small (n : Nat) (h : n < 256) : le64 n = [UInt8.ofNat n, 0, 0, 0, 0, 0, 0, 0] := by
+  rw [le64_eq, Nat.mod_eq_of_lt h, Nat.div_eq_of_lt h, show n / 65536 = 0 by omega, show n / 16777216 = 0 by omega, show n / 4294967296 = 0 by omega,
+    show n / 1099511627776 = 0 by omega, show n / 281474976710656 = 0 by omega, show n / 72057594037927936 = 0 by omega]
+  simp
+
+theorem packEvent_L (b ty da id : ByteArray) : L (packEvent b ty da id) = L b ++ encEvent ⟨L ty, L da, L id⟩ := by
+  unfold packEvent
+  by_cases h : ty.size < 256 ∧ da.size < 256 ∧ id.size < 256
+  · obtain ⟨h1, h2, h3⟩ := h
+    simp only [h1, h2, h3, and_self, ↓reduceIte]
+    simp only [L_append, L_set!, L_zeros24, L_length]
+    unfold encEvent
+    simp only [L_length, le64_small _ h1, le64_small _ h2, le64_small _ h3]
+    have hl : (L b).length = b.size := L_length b
+    rw [List.set_append_right _ _ (by omega), List.set_append_right _ _ (by omega), List.set_append_right _ _ (by omega)]
+    rw [hl, show b.size - b.size = 0 by omega, show b.size + 8 - b.size = 8 by omega, show b.size + 16 - b.size = 16 by omega]
+    simp [List.set, Nat.toUInt8]
+  · simp only [h, ↓reduceIte]
+    exact packEventSlow_L b ty da id
+
+/-- The layout of a list of events. -/
+def encEvents (es : List Event) : Bytes := (es.map encEvent).flatten
+
+@[simp] theorem encEvents_nil : encEvents [] = [] := rfl
+theorem encEvents_append (a b : List Event) : encEvents (a ++ b) = encEvents a ++ encEvents b := by simp [encEvents]
+
+/-- `s'` holds, after the output of `s`, the events `es` in the layout, and their number more. -/
+def OutAdds (s s' : FSt) (es : List Event) : Prop := L s'.outBuf = L s.outBuf ++ encEvents es ∧ s'.outN = s.outN + es.length
+
+theorem OutAdds.refl (s s' : FSt) (hb : s'.outBuf = s.outBuf) (hn : s'.outN = s.outN) : OutAdds s s' [] := by
+  refine ⟨?_, ?_⟩ <;> simp [hb, hn]
+
+theorem OutAdds.trans {s s' s'' : FSt} {a b : List Event} (h1 : OutAdds s s' a) (h2 : OutAdds s' s'' b) : OutAdds s s'' (a ++ b) := by
+  obtain ⟨h1, h1'⟩ := h1; obtain ⟨h2, h2'⟩ := h2
+  refine ⟨?_, ?_⟩
+  · rw [h2, h1, encEvents_append, List.append_assoc]
+  · rw [h2', h1', List.length_append]; omega
+
+theorem pushEv_adds (s : FSt) (e : FEvent) : OutAdds s (s.pushEv e) [absE e] := by
+  refine ⟨?_, ?_⟩
+  · simp [FSt.pushEv, packEvent_L, encEvents, absE]
+  · simp [FSt.pushEv]
 
 theorem hasNulF_eq (l : ByteArray) (i : Nat) : hasNulF l i = decide (NUL ∈ (L l).drop i) := by
   induction i using hasNulF.induct l with
@@ -202,7 +313,7 @@ theorem procLineF_abs (p : FProc) (l : ByteArray) :
 
 /-- `s'` is `s` after reading some bytes the list machine reads to `t'`, completing the events `es`. -/
 def Sim (s s' : FSt) (t' : St) (es : List Event) : Prop :=
-  absS s' = t' ∧ s'.out.toList.map absE = s.out.toList.map absE ++ es
+  absS s' = t' ∧ OutAdds s s' es
 
 @[simp] theorem L_bomPrefixB (k : Nat) : L (bomPrefixB k) = bomPrefix k := by
   induction k with
@@ -212,34 +323,41 @@ def Sim (s s' : FSt) (t' : St) (es : List Event) : Prop :=
 theorem endLineF_sim (s : FSt) (k : Bool) : Sim s (endLineF s k) (endLine (absS s) k).1 (endLine (absS s) k).2.toList := by
   obtain ⟨h1, h2⟩ := procLineF_abs s.p s.line
   have hr : (absS s).line.reverse = L s.line := by simp [absS]
-  unfold endLineF endLine Sim
-  rw [hr]
+  have hp : (absS s).p = absP s.p := rfl
+  have e1 : endLine (absS s) k = ({ absS s with line := [], p := (procLine (absP s.p) (L s.line)).1, skipLF := k }, (procLine (absP s.p) (L s.line)).2) := by
+    unfold endLine; rw [hr, hp]
+  rw [e1]
+  unfold endLineF
   rcases hq : procLineF s.p s.line with ⟨p', e⟩
   rw [hq] at h1 h2
   simp only at h1 h2
   rcases e with _ | e
   · simp only [Option.map_none] at h2
-    simp [absS, ← h1, ← h2]
+    rw [← h2, ← h1]
+    exact ⟨by simp [absS], OutAdds.refl _ _ rfl rfl⟩
   · simp only [Option.map_some] at h2
-    simp [absS, ← h1, ← h2]
+    rw [← h2, ← h1]
+    refine ⟨by simp [absS, FSt.pushEv], ?_⟩
+    have := pushEv_adds { s with line := ByteArray.empty, p := p', skipLF := k } e
+    simpa [OutAdds, encEvents] using this
 
 theorem stepBodyF_sim (s : FSt) (b : UInt8) : Sim s (stepBodyF s b) (stepBody (absS s) b).1 (stepBody (absS s) b).2.toList := by
   unfold stepBodyF stepBody
   by_cases hl : b = LF
   · by_cases hk : s.skipLF = true
-    · simp [hl, hk, Sim, absS]
+    · simp [hl, hk, Sim, absS, OutAdds]
     · simpa [hl, hk, absS] using endLineF_sim s false
   · by_cases hc : b = CR
     · simpa [hl, hc, absS, cr_ne_lf] using endLineF_sim s true
-    · simp [hl, hc, Sim, absS]
+    · simp [hl, hc, Sim, absS, OutAdds]
 
 theorem stepF_sim (s : FSt) (b : UInt8) : Sim s (stepF s b) (step (absS s) b).1 (step (absS s) b).2.toList := by
   unfold stepF step
   by_cases h3 : s.bom < 3
   · by_cases hb : b = bomByte s.bom
-    · simp [h3, hb, Sim, absS]
+    · simp [h3, hb, Sim, absS, OutAdds]
     · have := stepBodyF_sim { s with bom := 3, line := bomPrefixB s.bom } b
-      simpa [h3, hb, absS, Sim] using this
+      simpa [h3, hb, absS, Sim, OutAdds] using this
   · simpa [h3, absS] using stepBodyF_sim s b
 
 theorem feedLoop_sim (c : ByteArray) (i : Nat) (s : FSt) :
@@ -251,12 +369,11 @@ theorem feedLoop_sim (c : ByteArray) (i : Nat) (s : FSt) :
     obtain ⟨h3, h4⟩ := ih
     rw [h1] at h3 h4
     rw [L_drop_cons c i h, feed_cons]
-    refine ⟨h3, ?_⟩
-    rw [h4, h2]; simp [List.append_assoc]
+    exact ⟨h3, h2.trans h4⟩
   | case2 i s h =>
     rw [feedLoop]; simp only [h, ↓reduceDIte]
     rw [L_drop_size c i h]
-    simp [feed_nil, Sim]
+    simp [feed_nil, Sim, OutAdds]
 
 theorem scanEol_ge (c : ByteArray) (i : Nat) (hi : i ≤ c.size) : i ≤ scanEol c i := by
   induction i using scanEol.induct c with
@@ -520,8 +637,9 @@ theorem feedLoop_line (c : ByteArray) (i j : Nat) (hj : j < c.size) (hij : i < j
     (hne : ∀ k (hk : k < c.size), i ≤ k → k < j → c[k] ≠ LF ∧ c[k] ≠ CR) (heol : c[j] = LF ∨ c[j] = CR)
     (s : FSt) (hs : ¬ s.bom < 3) (hl : s.line.size = 0) :
     feedLoop c i s = feedLoop c (j + 1)
-      { s with line := ByteArray.empty, p := (procSliceF s.p c i j (by omega)).1, skipLF := ((c[j]) == CR),
-               out := (match (procSliceF s.p c i j (by omega)).2 with | some ev => s.out.push ev | none => s.out) } := by
+      (match (procSliceF s.p c i j (by omega)).2 with
+        | some ev => ({ s with line := ByteArray.empty, p := (procSliceF s.p c i j (by omega)).1, skipLF := ((c[j]) == CR) } : FSt).pushEv ev
+        | none => { s with line := ByteArray.empty, p := (procSliceF s.p c i j (by omega)).1, skipLF := ((c[j]) == CR) }) := by
   have run := feedLoop_run c i j (by omega) hne (j - i - 1) (by omega) s hs
   rw [show i + (j - i - 1 + 1) = j by omega] at run
   rw [run, feedLoop]
@@ -529,8 +647,9 @@ theorem feedLoop_line (c : ByteArray) (i j : Nat) (hj : j < c.size) (hij : i < j
   have hl' : s.line = ByteArray.empty := ByteArray.size_eq_zero_iff.mp hl
   have hpl : procLineF s.p (c.extract i j) = procSliceF s.p c i j (by omega) := (procSliceF_eq _ _ _ _ _).symm
   have hstep : stepF { s with skipLF := false, line := s.line ++ c.extract i j } c[j] =
-      { s with line := ByteArray.empty, p := (procSliceF s.p c i j (by omega)).1, skipLF := ((c[j]) == CR),
-               out := (match (procSliceF s.p c i j (by omega)).2 with | some ev => s.out.push ev | none => s.out) } := by
+      (match (procSliceF s.p c i j (by omega)).2 with
+        | some ev => ({ s with line := ByteArray.empty, p := (procSliceF s.p c i j (by omega)).1, skipLF := ((c[j]) == CR) } : FSt).pushEv ev
+        | none => { s with line := ByteArray.empty, p := (procSliceF s.p c i j (by omega)).1, skipLF := ((c[j]) == CR) }) := by
     unfold stepF
     simp only [hs, ↓reduceIte]
     unfold stepBodyF endLineF
@@ -566,11 +685,11 @@ theorem feedBulk_eq (c : ByteArray) (i : Nat) (s : FSt) : feedBulk c i s = feedL
   | case5 i s h => rw [feedBulk, feedLoop]; simp only [h, ↓reduceDIte]
 
 /-- A blank line (the held line is empty and the byte is a line end that is not the LF of a CR LF): the step dispatches. -/
-theorem stepF_blank (bom : Nat) (skipLF : Bool) (line data : ByteArray) (hasData : Bool) (type idBuf lastId : ByteArray) (retry : Option UInt64) (out : Array FEvent) (b : UInt8)
+theorem stepF_blank (bom : Nat) (skipLF : Bool) (line data : ByteArray) (hasData : Bool) (type idBuf lastId : ByteArray) (retry : Option UInt64) (outBuf : ByteArray) (outN : Nat) (b : UInt8)
     (hb : ¬ bom < 3) (hl : line.size = 0) (he : b = LF ∨ b = CR) (hsk : (!(skipLF && b == LF)) = true) :
-    stepF ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, out⟩ b =
-      if hasData then ⟨bom, b == CR, ByteArray.empty, ⟨ByteArray.empty, false, ByteArray.empty, idBuf, idBuf, retry⟩, out.push ⟨if type.size = 0 then tMessageB else type, data, idBuf⟩⟩
-      else ⟨bom, b == CR, ByteArray.empty, ⟨data, false, ByteArray.empty, idBuf, idBuf, retry⟩, out⟩ := by
+    stepF ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, outBuf, outN⟩ b =
+      if hasData then ⟨bom, b == CR, ByteArray.empty, ⟨ByteArray.empty, false, ByteArray.empty, idBuf, idBuf, retry⟩, packEvent outBuf (if type.size = 0 then tMessageB else type) data idBuf, outN + 1⟩
+      else ⟨bom, b == CR, ByteArray.empty, ⟨data, false, ByteArray.empty, idBuf, idBuf, retry⟩, outBuf, outN⟩ := by
   have hl' : line = ByteArray.empty := by
     apply ByteArray.ext; exact Array.eq_empty_of_size_eq_zero hl
   subst hl'
@@ -579,15 +698,15 @@ theorem stepF_blank (bom : Nat) (skipLF : Bool) (line data : ByteArray) (hasData
   unfold stepBodyF endLineF procLineF dispatchF
   rcases he with h | h
   · subst h
-    simp [LF, CR] at hsk ⊢
-    cases hasData <;> simp_all [LF, CR]
+    simp [LF, CR, FSt.pushEv] at hsk ⊢
+    cases hasData <;> simp_all [LF, CR, FSt.pushEv]
   · subst h
-    cases hasData <;> simp [LF, CR]
+    cases hasData <;> simp [LF, CR, FSt.pushEv]
 
 /-- The LF of a CR LF: only the flag changes. -/
-theorem stepF_skip (bom : Nat) (line data : ByteArray) (hasData : Bool) (type idBuf lastId : ByteArray) (retry : Option UInt64) (out : Array FEvent) (b : UInt8)
+theorem stepF_skip (bom : Nat) (line data : ByteArray) (hasData : Bool) (type idBuf lastId : ByteArray) (retry : Option UInt64) (outBuf : ByteArray) (outN : Nat) (b : UInt8)
     (hb : ¬ bom < 3) (hl : b = LF) :
-    stepF ⟨bom, true, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, out⟩ b = ⟨bom, false, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, out⟩ := by
+    stepF ⟨bom, true, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, outBuf, outN⟩ b = ⟨bom, false, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, outBuf, outN⟩ := by
   subst hl
   unfold stepF
   simp only [hb, ↓reduceIte]
@@ -619,92 +738,92 @@ theorem dataLine_colon (c : ByteArray) (i j : Nat) (hj : j ≤ c.size) (h : data
   · simp [hb] at h
 
 /-- The loop on unpacked state is the bulk loop on the packed state. -/
-theorem feedFast_eq (c : ByteArray) (i : Nat) (bom : Nat) (skipLF : Bool) (line data : ByteArray) (hasData : Bool) (type idBuf lastId : ByteArray) (retry : Option UInt64) (out : Array FEvent) :
-    feedFast c i bom skipLF line data hasData type idBuf lastId retry out = feedBulk c i ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, out⟩ := by
-  induction i, bom, skipLF, line, data, hasData, type, idBuf, lastId, retry, out using feedFast.induct c with
-  | case1 i bom skipLF line data hasData type idBuf lastId retry out h hb t ih =>
+theorem feedFast_eq (c : ByteArray) (i : Nat) (bom : Nat) (skipLF : Bool) (line data : ByteArray) (hasData : Bool) (type idBuf lastId : ByteArray) (retry : Option UInt64) (outBuf : ByteArray) (outN : Nat) :
+    feedFast c i bom skipLF line data hasData type idBuf lastId retry outBuf outN = feedBulk c i ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, outBuf, outN⟩ := by
+  induction i, bom, skipLF, line, data, hasData, type, idBuf, lastId, retry, outBuf, outN using feedFast.induct c with
+  | case1 i bom skipLF line data hasData type idBuf lastId retry outBuf outN h hb t ih =>
     rw [feedFast, feedBulk]; simp only [h, ↓reduceDIte, hb, ↓reduceIte]; exact ih
-  | case2 i bom skipLF line data hasData type idBuf lastId retry out h hb h4 h2 h3 ih =>
+  | case2 i bom skipLF line data hasData type idBuf lastId retry outBuf outN h hb h4 h2 h3 ih =>
     rw [feedFast, feedBulk]
     simp only [h, ↓reduceDIte, hb, ↓reduceIte, h2, h3, and_self, h4, procSliceF]
     exact ih
-  | case3 i bom skipLF line data type idBuf lastId retry out h hb h4 h2 h3 hdl vs ih =>
+  | case3 i bom skipLF line data type idBuf lastId retry outBuf outN h hb h4 h2 h3 hdl vs ih =>
     obtain ⟨hk, hd⟩ := dataLine_colon c i (scanFast c i) (by omega) hdl
     rw [feedFast, feedBulk]
     simp only [h, ↓reduceDIte, hb, ↓reduceIte, h2, h3, and_self, h4, procSliceF, hdl, hk, applyFieldS, hd, ↓reduceIte]
     exact ih
-  | case4 i bom skipLF line data hasData type idBuf lastId retry out h hb h4 hnd h2 h3 hdl vs ih =>
+  | case4 i bom skipLF line data hasData type idBuf lastId retry outBuf outN h hb h4 hnd h2 h3 hdl vs ih =>
     obtain ⟨hk, hd⟩ := dataLine_colon c i (scanFast c i) (by omega) hdl
     rw [feedFast, feedBulk]
     simp only [h, ↓reduceDIte, hb, ↓reduceIte, h2, h3, and_self, h4, procSliceF, hdl, hk, applyFieldS, hd, hnd, Bool.false_eq_true, ↓reduceIte]
     exact ih
-  | case5 i bom skipLF line data type idBuf lastId retry out h hb h4 h2 h3 hnd k vs hD ih =>
+  | case5 i bom skipLF line data type idBuf lastId retry outBuf outN h hb h4 h2 h3 hnd k vs hD ih =>
     rw [feedFast, feedBulk]
     simp only [k, vs] at hD ih
     simp only [h, ↓reduceDIte, hb, ↓reduceIte, h2, h3, and_self, h4, procSliceF, hD, applyFieldS, hnd, Bool.false_eq_true]
     exact ih
-  | case6 i bom skipLF line data hasData type idBuf lastId retry out h hb h4 hnd h2 h3 hdl k vs hD ih =>
+  | case6 i bom skipLF line data hasData type idBuf lastId retry outBuf outN h hb h4 hnd h2 h3 hdl k vs hD ih =>
     simp only [k, vs] at hD ih
     rw [feedFast, feedBulk]
     simp only [h, ↓reduceDIte, hb, ↓reduceIte, h2, h3, and_self, h4, procSliceF, hD, applyFieldS, hnd, hdl, Bool.false_eq_true]
     exact ih
-  | case7 i bom skipLF line data hasData type idBuf lastId retry out h hb h4 h2 h3 hdl k vs hD p ih =>
+  | case7 i bom skipLF line data hasData type idBuf lastId retry outBuf outN h hb h4 h2 h3 hdl k vs hD p ih =>
     simp only [k, vs, p] at hD ih
     rw [feedFast, feedBulk]
     simp only [h, ↓reduceDIte, hb, ↓reduceIte, h2, h3, and_self, h4, procSliceF, hD, hdl, Bool.false_eq_true]
     exact ih
-  | case8 i bom skipLF line data hasData type idBuf lastId retry out h hb h2 h3 ih =>
+  | case8 i bom skipLF line data hasData type idBuf lastId retry outBuf outN h hb h2 h3 ih =>
     rw [feedFast, feedBulk]
     simp only [h, ↓reduceDIte, hb, ↓reduceIte, h2, h3]
     exact ih
-  | case9 i bom skipLF line data hasData type idBuf lastId retry out h hb hsk h2 ih =>
+  | case9 i bom skipLF line data hasData type idBuf lastId retry outBuf outN h hb hsk h2 ih =>
     have hsk' : skipLF = true ∧ c[i] = LF := by simpa [Bool.and_eq_true, beq_iff_eq] using hsk
     rw [feedFast, feedBulk]
     simp only [h, ↓reduceDIte, hb, ↓reduceIte, h2, hsk]
     obtain ⟨hsk1, hsk2⟩ := hsk'
     subst hsk1
-    rw [stepF_skip bom line data hasData type idBuf lastId retry out c[i] hb hsk2]
+    rw [stepF_skip bom line data hasData type idBuf lastId retry outBuf outN c[i] hb hsk2]
     exact ih
-  | case10 i bom skipLF line data type idBuf lastId retry out h hb hsk hl h2 ih =>
+  | case10 i bom skipLF line data type idBuf lastId retry outBuf outN h hb hsk hl h2 ih =>
     have hs := scanFast_eq c i
     have hle := scanEol_ge c i (by omega)
     have heol := scanEol_stop c i h (by rw [hs] at h2; omega)
     have hsk' : (!(skipLF && c[i] == LF)) = true := by revert hsk; cases skipLF <;> cases (c[i] == LF) <;> simp
     rw [feedFast, feedBulk]
     simp only [h, ↓reduceDIte, hb, ↓reduceIte, h2, hsk, hl, and_self, Bool.false_eq_true]
-    rw [stepF_blank bom skipLF line data true type idBuf lastId retry out c[i] hb hl heol hsk']
+    rw [stepF_blank bom skipLF line data true type idBuf lastId retry outBuf outN c[i] hb hl heol hsk']
     simp only [↓reduceIte]
     exact ih
-  | case11 i bom skipLF line data hasData type idBuf lastId retry out h hb hsk hl hnd h2 ih =>
+  | case11 i bom skipLF line data hasData type idBuf lastId retry outBuf outN h hb hsk hl hnd h2 ih =>
     have hs := scanFast_eq c i
     have hle := scanEol_ge c i (by omega)
     have heol := scanEol_stop c i h (by rw [hs] at h2; omega)
     have hsk' : (!(skipLF && c[i] == LF)) = true := by revert hsk; cases skipLF <;> cases (c[i] == LF) <;> simp
     rw [feedFast, feedBulk]
     simp only [h, ↓reduceDIte, hb, ↓reduceIte, h2, hsk, hl, and_self, Bool.false_eq_true]
-    rw [stepF_blank bom skipLF line data hasData type idBuf lastId retry out c[i] hb hl heol hsk']
+    rw [stepF_blank bom skipLF line data hasData type idBuf lastId retry outBuf outN c[i] hb hl heol hsk']
     simp only [hnd, Bool.false_eq_true, ↓reduceIte]
     exact ih
-  | case12 i bom skipLF line data hasData type idBuf lastId retry out h hb hsk hl t h2 ih =>
+  | case12 i bom skipLF line data hasData type idBuf lastId retry outBuf outN h hb hsk hl t h2 ih =>
     rw [feedFast, feedBulk]
     simp only [h, ↓reduceDIte, hb, ↓reduceIte, h2, hsk, hl, Bool.false_eq_true]
     exact ih
-  | case13 i bom skipLF line data hasData type idBuf lastId retry out h =>
+  | case13 i bom skipLF line data hasData type idBuf lastId retry outBuf outN h =>
     rw [feedFast, feedBulk]
     simp only [h, ↓reduceDIte]
 
 theorem feedF_eq (s : FSt) (c : ByteArray) : feedF s c = feedBulk c 0 s := by
   unfold feedF
   split
-  · obtain ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, out⟩ := s
-    exact feedFast_eq c 0 bom skipLF line data hasData type idBuf lastId retry out
+  · obtain ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, outBuf, outN⟩ := s
+    exact feedFast_eq c 0 bom skipLF line data hasData type idBuf lastId retry outBuf outN
   · split
     · exact (feedBulk_eq c 0 s).symm
     · rfl
 
-/-- The array machine reads a chunk as the list machine does: the same state, and the events appended to `out` are the events the list machine returns. -/
+/-- The array machine reads a chunk as the list machine does: the same state, and the events appended to the output are the events the list machine returns (in the layout of the report). -/
 theorem feedF_sim (s : FSt) (c : ByteArray) : absS (feedF s c) = (feed (absS s) (L c)).1 ∧
-    (feedF s c).out.toList.map absE = s.out.toList.map absE ++ (feed (absS s) (L c)).2 := by
+    OutAdds s (feedF s c) (feed (absS s) (L c)).2 := by
   have h := feedLoop_sim c 0 s
   rw [List.drop_zero] at h
   rw [feedF_eq, feedBulk_eq]
@@ -713,9 +832,9 @@ theorem feedF_sim (s : FSt) (c : ByteArray) : absS (feedF s c) = (feed (absS s) 
 theorem absS_init : absS {} = ({} : St) := by simp [absS, absP]
 
 theorem feedChunksF_sim (cs : List ByteArray) : ∀ s : FSt, absS (feedChunksF s cs) = (feed (absS s) (cs.flatMap L)).1 ∧
-    (feedChunksF s cs).out.toList.map absE = s.out.toList.map absE ++ (feed (absS s) (cs.flatMap L)).2 := by
+    OutAdds s (feedChunksF s cs) (feed (absS s) (cs.flatMap L)).2 := by
   induction cs with
-  | nil => intro s; simp [feedChunksF, feed_nil]
+  | nil => intro s; exact ⟨by simp [feedChunksF, feed_nil], by simpa [feedChunksF, feed_nil] using OutAdds.refl s s rfl rfl⟩
   | cons c cs ih =>
     intro s
     obtain ⟨h1, h2⟩ := feedF_sim s c
@@ -723,13 +842,13 @@ theorem feedChunksF_sim (cs : List ByteArray) : ∀ s : FSt, absS (feedChunksF s
     rw [h1] at h3 h4
     simp only [feedChunksF, List.foldl_cons] at h3 h4 ⊢
     rw [List.flatMap_cons, feed_append]
-    refine ⟨h3, ?_⟩
-    rw [h4, h2, List.append_assoc]
+    exact ⟨h3, h2.trans h4⟩
 
 /-- **The array machine is chunk invariant, and equals the reference.** Fed a stream cut into any chunks, the machine (`feedF` over the chunks: the code the C interface runs) completes exactly the events
-of the whole-buffer reference on the concatenation, and ends in its algorithm state (last event ID, reconnection time, buffers). -/
+of the whole-buffer reference on the concatenation, written in the report's layout (`encEvents`: three lengths and three byte strings an event) and counted by `outN`, and ends in its algorithm state (last event ID, reconnection time, buffers). -/
 theorem fast_eq_parse (cs : List ByteArray) :
-    (((cs.foldl feedF {}).out.toList.map absE), absP (cs.foldl feedF {}).p) = parse (cs.flatMap L) := by
+    (L (cs.foldl feedF {}).outBuf = encEvents (parse (cs.flatMap L)).1 ∧ (cs.foldl feedF {}).outN = (parse (cs.flatMap L)).1.length) ∧
+      absP (cs.foldl feedF {}).p = (parse (cs.flatMap L)).2 := by
   obtain ⟨h1, h2⟩ := feedChunksF_sim cs {}
   unfold feedChunksF at h1 h2
   have h := chunk_invariance (cs.map L)
@@ -737,12 +856,16 @@ theorem fast_eq_parse (cs : List ByteArray) :
   have hf : (cs.map L).flatten = cs.flatMap L := by simp [List.flatMap_def]
   rw [hf] at h
   rw [← h]
-  refine Prod.ext ?_ ?_
-  · simp only; rw [h2]; simp [absS_init]
+  refine ⟨?_, ?_⟩
+  · obtain ⟨b1, b2⟩ := h2
+    simp only [absS_init] at b1 b2
+    exact ⟨by simpa [L] using b1, by simpa using b2⟩
   · exact congrArg (fun t : St => t.p) h1
 
 /-- The same, in the reference's own pieces (`parse` unfolded: strip the byte order mark, cut into lines, run the lines): the array machine reads a stream as the reference's line cutter and line runner do. -/
 theorem fast_eq_runLines (cs : List ByteArray) :
-    (((cs.foldl feedF {}).out.toList.map absE), absP (cs.foldl feedF {}).p) = runLines {} (splitLines (stripBOM (cs.flatMap L))).1 := fast_eq_parse cs
+    (L (cs.foldl feedF {}).outBuf = encEvents (runLines {} (splitLines (stripBOM (cs.flatMap L))).1).1 ∧
+      (cs.foldl feedF {}).outN = (runLines {} (splitLines (stripBOM (cs.flatMap L))).1).1.length) ∧
+      absP (cs.foldl feedF {}).p = (runLines {} (splitLines (stripBOM (cs.flatMap L))).1).2 := fast_eq_parse cs
 
 end LeanSse

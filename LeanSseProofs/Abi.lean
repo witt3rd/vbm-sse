@@ -9,99 +9,6 @@ set_option linter.unusedSimpArgs false
 
 namespace LeanSse
 
-/-- A natural number as eight little-endian bytes (modulo `2^64`). -/
-def le64 (n : Nat) : Bytes := (List.range 8).map fun i => UInt8.ofNat (n / 256 ^ i % 256)
-
-theorem le64_eq (n : Nat) : le64 n = [UInt8.ofNat (n % 256), UInt8.ofNat (n / 256 % 256), UInt8.ofNat (n / 65536 % 256), UInt8.ofNat (n / 16777216 % 256),
-    UInt8.ofNat (n / 4294967296 % 256), UInt8.ofNat (n / 1099511627776 % 256), UInt8.ofNat (n / 281474976710656 % 256), UInt8.ofNat (n / 72057594037927936 % 256)] := by
-  simp [le64, List.range_succ]
-
-theorem le64_mod (n : Nat) : le64 (n % 18446744073709551616) = le64 n := by
-  rw [le64_eq, le64_eq]
-  simp only [List.cons.injEq, and_true]
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> congr 1 <;> omega
-
-theorem shr_byte (w : UInt64) (k : UInt64) (d : Nat) (hk : k.toNat < 64) (hd : d = 2 ^ k.toNat) : (w >>> k).toUInt8 = UInt8.ofNat (w.toNat / d % 256) := by
-  apply UInt8.toNat_inj.mp
-  simp [UInt64.toNat_toUInt8, UInt64.toNat_shiftRight, Nat.shiftRight_eq_div_pow, Nat.mod_eq_of_lt hk, hd]
-
-@[simp] theorem L_zeros7 : L zeros7 = [0, 0, 0, 0, 0, 0, 0] := by
-  simp [zeros7, L, ByteArray.data_push]
-
-@[simp] theorem L_emptyWithCapacity (n : Nat) : L (ByteArray.emptyWithCapacity n) = [] := rfl
-
-theorem pushWord_L_big (b : ByteArray) (w : UInt64) : L (b.push w.toUInt8 |>.push (w >>> 8).toUInt8 |>.push (w >>> 16).toUInt8 |>.push (w >>> 24).toUInt8 |>.push (w >>> 32).toUInt8
-    |>.push (w >>> 40).toUInt8 |>.push (w >>> 48).toUInt8 |>.push (w >>> 56).toUInt8) = L b ++ le64 w.toNat := by
-  rw [le64_eq]
-  simp only [L_push, List.append_assoc]
-  rw [shr_byte w 8 256 (by simp) (by simp), shr_byte w 16 65536 (by simp) (by simp), shr_byte w 24 16777216 (by simp) (by simp),
-    shr_byte w 32 4294967296 (by simp) (by simp), shr_byte w 40 1099511627776 (by simp) (by simp), shr_byte w 48 281474976710656 (by simp) (by simp),
-    shr_byte w 56 72057594037927936 (by simp) (by simp)]
-  simp only [List.cons_append, List.nil_append]
-  have h0 : w.toUInt8 = UInt8.ofNat (w.toNat % 256) := by
-    apply UInt8.toNat_inj.mp; simp [UInt64.toNat_toUInt8]
-  rw [h0]
-
-theorem pushWord_L (b : ByteArray) (w : UInt64) : L (pushWord b w) = L b ++ le64 w.toNat := by
-  unfold pushWord
-  by_cases h : w < 256
-  · have hn : w.toNat < 256 := by simpa [UInt64.lt_iff_toNat_lt] using h
-    simp only [h, ↓reduceIte, L_append, L_push, L_zeros7, List.append_assoc]
-    rw [le64_eq, Nat.div_eq_of_lt hn, show w.toNat / 65536 = 0 by omega, show w.toNat / 16777216 = 0 by omega, show w.toNat / 4294967296 = 0 by omega,
-      show w.toNat / 1099511627776 = 0 by omega, show w.toNat / 281474976710656 = 0 by omega, show w.toNat / 72057594037927936 = 0 by omega]
-    have h0 : w.toUInt8 = UInt8.ofNat (w.toNat % 256) := by
-      apply UInt8.toNat_inj.mp; simp [UInt64.toNat_toUInt8]
-    simp [h0]
-  · simp only [h, ↓reduceIte]
-    exact pushWord_L_big b w
-
-theorem pushWord_ofNat (b : ByteArray) (n : Nat) : L (pushWord b (UInt64.ofNat n)) = L b ++ le64 n := by
-  have h : (UInt64.ofNat n).toNat = n % 18446744073709551616 := by simp
-  rw [pushWord_L, h, le64_mod]
-
-/-- The layout of one event. -/
-def encEvent (e : Event) : Bytes := le64 e.type.length ++ le64 e.data.length ++ le64 e.lastEventId.length ++ e.type ++ e.data ++ e.lastEventId
-
-/-- The layout of a report: the count, whether a reconnection time is set and its value, the last event ID string, the events. -/
-def encReport (retry : Option Nat) (id : Bytes) (es : List Event) : Bytes :=
-  le64 es.length ++ le64 (if retry.isSome then 1 else 0) ++ le64 (retry.getD 0) ++ le64 id.length ++ id ++ (es.map encEvent).flatten
-
-theorem packEventSlow_L (b : ByteArray) (e : FEvent) : L (packEventSlow b e) = L b ++ encEvent (absE e) := by
-  unfold packEventSlow encEvent absE
-  simp only [L_append, pushWord_ofNat, L_length]
-  simp [L_length, List.append_assoc]
-
-theorem L_set! (b : ByteArray) (i : Nat) (v : UInt8) : L (b.set! i v) = (L b).set i v := by
-  simp [L, ByteArray.set!, Array.set!, Array.toList_setIfInBounds]
-
-@[simp] theorem L_zeros24 : L zeros24 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] := by
-  simp [zeros24, L, zeros7, ByteArray.data_push]
-
-theorem le64_small (n : Nat) (h : n < 256) : le64 n = [UInt8.ofNat n, 0, 0, 0, 0, 0, 0, 0] := by
-  rw [le64_eq, Nat.mod_eq_of_lt h, Nat.div_eq_of_lt h, show n / 65536 = 0 by omega, show n / 16777216 = 0 by omega, show n / 4294967296 = 0 by omega,
-    show n / 1099511627776 = 0 by omega, show n / 281474976710656 = 0 by omega, show n / 72057594037927936 = 0 by omega]
-  simp
-
-theorem packEvent_L (b : ByteArray) (e : FEvent) : L (packEvent b e) = L b ++ encEvent (absE e) := by
-  unfold packEvent
-  by_cases h : e.type.size < 256 ∧ e.data.size < 256 ∧ e.lastEventId.size < 256
-  · obtain ⟨h1, h2, h3⟩ := h
-    simp only [h1, h2, h3, and_self, ↓reduceIte]
-    simp only [L_append, L_set!, L_zeros24, L_length]
-    unfold encEvent absE
-    simp only [L_length, le64_small _ h1, le64_small _ h2, le64_small _ h3]
-    have hl : (L b).length = b.size := L_length b
-    rw [List.set_append_right _ _ (by omega), List.set_append_right _ _ (by omega), List.set_append_right _ _ (by omega)]
-    rw [hl, show b.size - b.size = 0 by omega, show b.size + 8 - b.size = 8 by omega, show b.size + 16 - b.size = 16 by omega]
-    simp [List.set, Nat.toUInt8]
-  · simp only [h, ↓reduceIte]
-    exact packEventSlow_L b e
-
-theorem foldl_packEvent (es : List FEvent) : ∀ b : ByteArray, L (es.foldl packEvent b) = L b ++ ((es.map absE).map encEvent).flatten := by
-  induction es with
-  | nil => intro b; simp
-  | cons e es ih => intro b; simp [ih, packEvent_L, List.append_assoc]
-
 theorem le64_ofNat (n : Nat) : le64 (UInt64.ofNat n).toNat = le64 n := by
   have h : (UInt64.ofNat n).toNat = n % 18446744073709551616 := by simp
   rw [h, le64_mod]
@@ -109,11 +16,11 @@ theorem le64_ofNat (n : Nat) : le64 (UInt64.ofNat n).toNat = le64 n := by
 @[simp] theorem L_zeros32 : L zeros32 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] := by
   simp [zeros32, L, zeros7, ByteArray.data_push]
 
-theorem reportHead_L (s : FSt) : L (reportHead s) = le64 s.out.size ++ le64 (if s.p.retry.isSome then 1 else 0) ++ le64 ((s.p.retry.map UInt64.toNat).getD 0) ++ le64 s.p.lastEventId.size := by
+theorem reportHead_L (s : FSt) : L (reportHead s) = le64 s.outN ++ le64 (if s.p.retry.isSome then 1 else 0) ++ le64 ((s.p.retry.map UInt64.toNat).getD 0) ++ le64 s.p.lastEventId.size := by
   have hf : (if s.p.retry.isSome = true then (1 : UInt64) else 0).toNat = if s.p.retry.isSome = true then 1 else 0 := by split <;> rfl
   have hr : (retryWord s.p).toNat = (s.p.retry.map UInt64.toNat).getD 0 := by unfold retryWord; cases s.p.retry <;> simp
   unfold reportHead
-  by_cases h : s.out.size < 256 ∧ retryWord s.p < 256 ∧ s.p.lastEventId.size < 256
+  by_cases h : s.outN < 256 ∧ retryWord s.p < 256 ∧ s.p.lastEventId.size < 256
   · obtain ⟨h1, h2, h3⟩ := h
     simp only [h1, h2, h3, and_self, ↓reduceIte]
     simp only [L_append, L_set!, L_zeros32, L_length, L_empty]
@@ -130,10 +37,21 @@ theorem reportHead_L (s : FSt) : L (reportHead s) = le64 s.out.size ++ le64 (if 
     simp only [pushWord_L, L_append, L_empty, L_length, le64_ofNat, hf, hr, Array.length_toList, Option.isSome_map]
     simp
 
-theorem report_L (s : FSt) : L (report s) = encReport (s.p.retry.map UInt64.toNat) (L s.p.lastEventId) (s.out.toList.map absE) := by
+/-- The output of a state holds exactly the events `es`, in the layout. -/
+def OutIs (s : FSt) (es : List Event) : Prop := L s.outBuf = encEvents es ∧ s.outN = es.length
+
+theorem report_L (s : FSt) (es : List Event) (h : OutIs s es) : L (report s) = encReport (s.p.retry.map UInt64.toNat) (L s.p.lastEventId) es := by
+  obtain ⟨h1, h2⟩ := h
   unfold report encReport
-  rw [← Array.foldl_toList, foldl_packEvent]
-  simp only [L_append, reportHead_L, L_length, List.length_map, Array.length_toList, Option.isSome_map]
+  split
+  · rename_i hz
+    have h0 : L s.outBuf = [] := by rw [← List.length_eq_zero_iff, L_length]; exact hz
+    have hz' : encEvents es = [] := by rw [← h1]; exact h0
+    simp only [L_append, reportHead_L, L_length, h2, Option.isSome_map]
+    unfold encEvents at hz'
+    rw [hz']; simp
+  · simp only [L_append, reportHead_L, L_length, h1, h2, Option.isSome_map, List.append_assoc]
+    simp [encEvents]
 
 /-! ## The reader: what a binding does with the bytes -/
 
@@ -232,45 +150,98 @@ theorem rdReport_encReport (retry : Option Nat) (hr : ∀ r, retry = some r → 
   | none => simp
   | some r => simp
 
-/-- What must hold of a state for its report to be a faithful one: every length fits a word (none exceeds `2^64`; no array does). -/
-def Fits (s : FSt) : Prop :=
-  s.out.size < 18446744073709551616 ∧ s.p.lastEventId.size < 18446744073709551616 ∧
-  ∀ e ∈ s.out.toList, e.type.size < 18446744073709551616 ∧ e.data.size < 18446744073709551616 ∧ e.lastEventId.size < 18446744073709551616
+/-- What must hold for a report to be a faithful one: every length fits a word (none exceeds `2^64`; no array does). -/
+def Fits (s : FSt) (es : List Event) : Prop :=
+  es.length < 18446744073709551616 ∧ s.p.lastEventId.size < 18446744073709551616 ∧ ∀ e ∈ es, FitsE e
 
-/-- **The report says what the machine holds.** Read by `rdReport`, the report of a state is its reconnection time, its last event ID string and the events in `out`. -/
-theorem report_decodes (s : FSt) (hF : Fits s) :
-    rdReport (L (report s)) = some (s.p.retry.map UInt64.toNat, L s.p.lastEventId, s.out.toList.map absE) := by
+/-- **The report says what the machine holds.** Read by `rdReport`, the report of a state whose output is `es` is its reconnection time, its last event ID string and the events `es`. -/
+theorem report_decodes (s : FSt) (es : List Event) (hO : OutIs s es) (hF : Fits s es) :
+    rdReport (L (report s)) = some (s.p.retry.map UInt64.toNat, L s.p.lastEventId, es) := by
   obtain ⟨h1, h2, h3⟩ := hF
-  rw [report_L]
+  rw [report_L s es hO]
   apply rdReport_encReport
   · intro r hr
     cases hq : s.p.retry with
     | none => rw [hq] at hr; simp at hr
     | some v => rw [hq] at hr; simp at hr; rw [← hr]; exact v.toNat_lt_size
   · rw [L_length]; exact h2
-  · simpa using h1
-  · intro e he
-    obtain ⟨x, hx, rfl⟩ := List.mem_map.mp he
-    obtain ⟨a, b, c⟩ := h3 x hx
-    exact ⟨by simp [absE, L_length, a], by simp [absE, L_length, b], by simp [absE, L_length, c]⟩
+  · exact h1
+  · exact h3
 
-/-- **The C interface's chunk.** `abiFeed` (the export `vbm_sse_lean_feed`) then `report` (`vbm_sse_lean_report`): read back, the report is exactly the reference list machine's answer for the chunk:
-the events it completed, the last event ID string and the reconnection time after it. -/
-theorem abi_feed_report (s : FSt) (c : ByteArray) (hF : Fits (abiFeed s c)) :
-    rdReport (L (report (abiFeed s c))) =
-      some ((feed (absS s) (L c)).1.p.retry, (feed (absS s) (L c)).1.p.lastEventId, (feed (absS s) (L c)).2) := by
-  rw [report_decodes _ hF]
-  obtain ⟨h1, h2⟩ := feedF_sim { s with out := #[] } c
-  have e1 : absS { s with out := #[] } = absS s := rfl
+theorem retryEq_iff (a b : Option UInt64) : retryEq a b = true ↔ a = b := by
+  cases a <;> cases b <;> simp [retryEq]
+
+/-- The cached report of a reader is the report of a state with no events, made from its key, which is the state's reconnection time and last event ID. -/
+def RInv (r : RSt) : Prop := r.head = headRep r.kRetry r.kId ∧ r.kRetry = r.st.p.retry ∧ r.kId = r.st.p.lastEventId
+
+/-- The report of a state with no events, for any key (read back: `encReport`). -/
+theorem headRep_L (retry : Option UInt64) (id : ByteArray) : L (headRep retry id) = encReport (retry.map UInt64.toNat) (L id) [] :=
+  report_L _ [] ⟨by simp [L], rfl⟩
+
+theorem abiNew_inv : RInv (abiNew ()) := ⟨rfl, rfl, rfl⟩
+
+theorem refresh_st (st' : FSt) (kRetry : Option UInt64) (kId head : ByteArray) : (RSt.refresh st' kRetry kId head).st = st' := by
+  unfold RSt.refresh; split <;> rfl
+
+theorem abiFeed_st (r : RSt) (c : ByteArray) :
+    (abiFeed r c).st = feedF ({ r.st with outBuf := if 64 ≤ c.size then ByteArray.emptyWithCapacity (2 * c.size + 64) else ByteArray.empty, outN := 0 } : FSt) c := by
+  obtain ⟨st, kRetry, kId, head⟩ := r
+  exact refresh_st _ _ _ _
+
+theorem refresh_inv (st' : FSt) (kRetry : Option UInt64) (kId head : ByteArray) (h : head = headRep kRetry kId) : RInv (RSt.refresh st' kRetry kId head) := by
+  unfold RSt.refresh
+  split
+  · rename_i hc
+    simp only [Bool.and_eq_true, retryEq_iff, decide_eq_true_eq] at hc
+    exact ⟨h, hc.1.symm, hc.2.symm⟩
+  · exact ⟨rfl, rfl, rfl⟩
+
+theorem abiFeed_inv (r : RSt) (c : ByteArray) (hI : RInv r) : RInv (abiFeed r c) := by
+  obtain ⟨st, kRetry, kId, head⟩ := r
+  exact refresh_inv _ _ _ _ hI.1
+
+/-- The report of a reader, read back: its reconnection time, last event ID and the events of its output `es`. -/
+theorem abiReport_L (r : RSt) (hI : RInv r) (es : List Event) (hO : OutIs r.st es) :
+    L (abiReport r) = encReport (r.st.p.retry.map UInt64.toNat) (L r.st.p.lastEventId) es := by
+  unfold abiReport
+  split
+  · rename_i h0
+    have hes : es = [] := by
+      have := hO.2; rw [h0] at this; exact (List.length_eq_zero_iff.mp this.symm)
+    subst hes
+    obtain ⟨h1, h2, h3⟩ := hI
+    rw [h1, headRep_L, h2, h3]
+  · exact report_L r.st es hO
+
+/-- **The C interface's chunk.** `abiFeed` (the export `vbm_sse_lean_feed`) then `abiReport` (`vbm_sse_lean_report`), from a reader as `abiNew` makes it and every chunk makes it: read back, the report is exactly
+the reference list machine's answer for the chunk: the events it completed, the last event ID string and the reconnection time after it. -/
+theorem abi_feed_report (r : RSt) (hI : RInv r) (c : ByteArray) (hF : Fits (abiFeed r c).st (feed (absS r.st) (L c)).2) :
+    rdReport (L (abiReport (abiFeed r c))) =
+      some ((feed (absS r.st) (L c)).1.p.retry, (feed (absS r.st) (L c)).1.p.lastEventId, (feed (absS r.st) (L c)).2) := by
+  have hab := abiFeed_st r c
+  generalize hs0 : ({ r.st with outBuf := if 64 ≤ c.size then ByteArray.emptyWithCapacity (2 * c.size + 64) else ByteArray.empty, outN := 0 } : FSt) = s0 at hab
+  have hb0 : L s0.outBuf = [] := by rw [← hs0]; simp only; split <;> simp
+  have hn0 : s0.outN = 0 := by rw [← hs0]
+  have e1 : absS s0 = absS r.st := by rw [← hs0]; rfl
+  obtain ⟨h1, h2⟩ := feedF_sim s0 c
   rw [e1] at h1 h2
-  have hp : (absS (feedF { s with out := #[] } c)).p = (feed (absS s) (L c)).1.p := by rw [h1]
-  have hR : (feedF { s with out := #[] } c).p.retry.map UInt64.toNat = (feed (absS s) (L c)).1.p.retry := by
+  have hO : OutIs (abiFeed r c).st (feed (absS r.st) (L c)).2 := by
+    rw [hab]
+    obtain ⟨b1, b2⟩ := h2
+    refine ⟨?_, ?_⟩
+    · rw [b1, hb0]; simp
+    · rw [b2, hn0]; simp
+  have hI' := abiFeed_inv r c hI
+  have hd := abiReport_L _ hI' _ hO
+  obtain ⟨f1, f2, f3⟩ := hF
+  have hdec := report_decodes (abiFeed r c).st _ hO ⟨f1, f2, f3⟩
+  have hL : L (abiReport (abiFeed r c)) = L (report (abiFeed r c).st) := by rw [hd, report_L _ _ hO]
+  rw [hL, hdec]
+  have hp : (absS (abiFeed r c).st).p = (feed (absS r.st) (L c)).1.p := by rw [hab, h1]
+  have hR : (abiFeed r c).st.p.retry.map UInt64.toNat = (feed (absS r.st) (L c)).1.p.retry := by
     have := congrArg Proc.retry hp; exact this
-  have hI : L (feedF { s with out := #[] } c).p.lastEventId = (feed (absS s) (L c)).1.p.lastEventId := by
+  have hI2 : L (abiFeed r c).st.p.lastEventId = (feed (absS r.st) (L c)).1.p.lastEventId := by
     have := congrArg Proc.lastEventId hp; exact this
-  have hE : (feedF { s with out := #[] } c).out.toList.map absE = (feed (absS s) (L c)).2 := by rw [h2]; rfl
-  show some (_, _, _) = _
-  simp only [abiFeed]
-  rw [hR, hI, hE]
+  rw [hR, hI2]
 
 end LeanSse

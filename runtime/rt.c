@@ -230,25 +230,6 @@ lean_object *l_List_appendTR___redArg(lean_object *as, lean_object *bs) {
   return bs;
 }
 
-/* Scalar arrays (ByteArray): copy with capacity cap (>= size), consuming a. */
-lean_obj_res lean_copy_sarray(lean_obj_arg a, size_t cap) {
-  size_t sz = lean_sarray_size(a), es = lean_sarray_elem_size(a);
-  lean_object *r = lean_alloc_sarray(es, sz, cap);
-  memcpy(lean_sarray_cptr(r), lean_sarray_cptr(a), sz * es);
-  lean_dec(a);
-  return r;
-}
-lean_obj_res lean_copy_sarray_nonlinear(lean_obj_arg a, size_t cap) { return lean_copy_sarray(a, cap); }
-
-lean_obj_res lean_byte_array_push(lean_obj_arg a, uint8_t b) {
-  size_t sz = lean_sarray_size(a);
-  lean_object *r = (lean_is_exclusive(a) && sz < lean_sarray_capacity(a)) ? a : lean_copy_sarray(a, sz < 8 ? 16 : 2 * sz);
-  lean_sarray_cptr(r)[sz] = b;
-  lean_to_sarray(r)->m_size = sz + 1;
-  return r;
-}
-
-static size_t nat_or_max(lean_object *n) { return lean_is_scalar(n) ? lean_unbox(n) : (size_t)-1; }
 /* Copy n bytes between two ranges that do not overlap: a head and a tail (which may overlap each other, never the source with the destination), no byte loop. */
 static inline void copy_apart_(unsigned char *d, const unsigned char *s, size_t n) {
 #ifdef __wasm__
@@ -271,6 +252,25 @@ static inline void copy_apart_(unsigned char *d, const unsigned char *s, size_t 
   }
 #endif
 }
+/* Scalar arrays (ByteArray): copy with capacity cap (>= size), consuming a. */
+lean_obj_res lean_copy_sarray(lean_obj_arg a, size_t cap) {
+  size_t sz = lean_sarray_size(a), es = lean_sarray_elem_size(a);
+  lean_object *r = lean_alloc_sarray(es, sz, cap);
+  copy_apart_(lean_sarray_cptr(r), lean_sarray_cptr(a), sz * es);
+  lean_dec(a);
+  return r;
+}
+lean_obj_res lean_copy_sarray_nonlinear(lean_obj_arg a, size_t cap) { return lean_copy_sarray(a, cap); }
+
+lean_obj_res lean_byte_array_push(lean_obj_arg a, uint8_t b) {
+  size_t sz = lean_sarray_size(a);
+  lean_object *r = (lean_is_exclusive(a) && sz < lean_sarray_capacity(a)) ? a : lean_copy_sarray(a, sz < 8 ? 16 : 2 * sz);
+  lean_sarray_cptr(r)[sz] = b;
+  lean_to_sarray(r)->m_size = sz + 1;
+  return r;
+}
+
+static size_t nat_or_max(lean_object *n) { return lean_is_scalar(n) ? lean_unbox(n) : (size_t)-1; }
 /* The general case of `ByteArray.copySlice` (below): src borrowed, dest owned, any Nats, any sharing, src may be dest. */
 static __attribute__((noinline)) lean_obj_res copy_slice_general_(lean_obj_arg src, lean_obj_arg so, lean_obj_arg dest, lean_obj_arg dof, lean_obj_arg ln, uint8_t exact) {
   size_t ssz = lean_sarray_size(src), dsz = lean_sarray_size(dest), src_off = nat_or_max(so);
@@ -315,7 +315,7 @@ lean_object *l_ByteArray_extract(lean_object *a, lean_object *b, lean_object *e)
   if (ei > n) ei = n;
   size_t len = ei > bi ? ei - bi : 0;
   lean_object *r = lean_alloc_sarray(1, len, len);
-  if (len) memcpy(lean_sarray_cptr(r), lean_sarray_cptr(a) + bi, len);
+  copy_apart_(lean_sarray_cptr(r), lean_sarray_cptr(a) + bi, len);
   return r;
 }
 
@@ -323,20 +323,6 @@ lean_object *l_ByteArray_extract(lean_object *a, lean_object *b, lean_object *e)
 bool lean_sarray_eq_cold(lean_object *a, lean_object *b) {
   size_t n = lean_sarray_size(a);
   return memcmp(lean_sarray_cptr(a), lean_sarray_cptr(b), n) == 0;
-}
-
-/* `Array.push a v` (both owned): in place when a is unshared and has room; else a copy with doubled capacity (the elements are retained when a stays alive, moved when it was the last reference). */
-lean_object *lean_array_push(lean_obj_arg a, lean_obj_arg v) {
-  size_t sz = lean_array_size(a);
-  lean_object *r = a;
-  if (!(lean_is_exclusive(a) && sz < lean_array_capacity(a))) {
-    r = lean_alloc_array(sz, sz < 4 ? 8 : 2 * sz);
-    if (lean_is_exclusive(a)) { memcpy(lean_array_cptr(r), lean_array_cptr(a), sz * sizeof(lean_object *)); lean_free_object(a); }
-    else { for (size_t i = 0; i < sz; i++) { lean_object *x = lean_array_cptr(a)[i]; lean_inc(x); lean_array_cptr(r)[i] = x; } lean_dec(a); }
-  }
-  lean_array_cptr(r)[sz] = v;
-  lean_to_array(r)->m_size = sz + 1;
-  return r;
 }
 
 /* `String.toUTF8` (s borrowed): the bytes without the terminating NUL. */

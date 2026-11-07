@@ -54,13 +54,18 @@ def row (id : Nat) (input : Bytes) : String :=
 /-- All the rows. -/
 def rows (n : Nat) : List String := (corpus n).zipIdx.map fun (b, i) => row i b
 
+/-- A length as a little-endian word (eight bytes), as the report lays it out. -/
+def word (n : Nat) : Bytes := (List.range 8).map fun i => UInt8.ofNat (n / 256 ^ i % 256)
+
+/-- An event in the layout of the array machine's output: its three lengths, then its three byte strings. -/
+def laid (e : Event) : Bytes := word e.type.length ++ word e.data.length ++ word e.lastEventId.length ++ e.type ++ e.data ++ e.lastEventId
+
 /-- The machine, run on the input cut as `cs`, agrees with the reference's events and final state; so does the array machine (the one the C interface runs). -/
 def agrees (input : Bytes) (cs : List Bytes) : Bool :=
   let (s, evs) := feedChunks {} cs
   let (evs', p) := parse input
   let f := feedChunksF {} (cs.map fun c => c.toByteArray)
-  let fevs : List Event := f.out.toList.map fun e => ⟨e.type.data.toList, e.data.data.toList, e.lastEventId.data.toList⟩
-  decide (evs = evs') && decide (s.p = p) && decide (fevs = evs') && decide (f.p.lastEventId.data.toList = p.lastEventId) && decide (f.p.retry.map UInt64.toNat = p.retry)
+  decide (evs = evs') && decide (s.p = p) && decide (f.outBuf.data.toList = (evs'.map laid).flatten) && decide (f.outN = evs'.length) && decide (f.p.lastEventId.data.toList = p.lastEventId) && decide (f.p.retry.map UInt64.toNat = p.retry)
 
 /-- Every cut the runners of the bindings make: whole, byte by byte, and each two-way split. -/
 def cuts (input : Bytes) : List (List Bytes) :=

@@ -36,8 +36,8 @@ def cut (b : ByteArray) (c : Nat) : Array ByteArray := Id.run do
   let mut n := 0
   for c in cs do
     s := feedF s c
-    n := n + s.out.size
-    s := { s with out := #[] }
+    n := n + s.outN
+    s := { s with outBuf := ByteArray.empty, outN := 0 }
   return n
 
 def main (args : List String) : IO UInt32 := do

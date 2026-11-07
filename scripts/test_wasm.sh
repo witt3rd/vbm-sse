@@ -4,7 +4,7 @@
 #   Builds the module; generates the shared vectors (vbm-sse-vectors-1) from the REFERENCE; tests/wasm/wasm_test.mjs runs every row on every cut through the module (the events, the last event ID and
 #   the reconnection time equal the row's), the allocator refuses an impossible size, an oversized chunk is ARG, no leak.
 # NEGATIVE self-tests, in the same run: a corrupted expected event and reconnection time each fail the wasm test; a deliberate leak fails it; a module with an import fails it; a build with an
-# unresolved symbol fails to link; three mutants of the runtime (ByteArray.push, Array.push, free) each fail it.
+# unresolved symbol fails to link; two mutants of the runtime (ByteArray.push, free) each fail it.
 # Run: mise exec -- scripts/test_wasm.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -44,8 +44,7 @@ mutant() {  # mutant NAME FROM TO
   must_fail "runtime mutant $1" run "$tmp/$1.wasm" "$v"
 }
 bgj mutant bytepush 'lean_sarray_cptr(r)[sz] = b;' 'lean_sarray_cptr(r)[sz] = b + 1;'
-bgj mutant arraypush 'lean_array_cptr(r)[sz] = v;' 'lean_array_cptr(r)[sz] = lean_array_cptr(r)[sz ? sz - 1 : 0]; if (!sz) lean_array_cptr(r)[0] = v;'
 bgj mutant nofree 'live_ -= c; *(void **)p = *list; *list = p;' '*(void **)p = *list; *list = p;'
 joinj
 ran_done test_wasm
-echo "test_wasm: ok (module $(stat -c %s "$tmp/vbm.wasm") bytes; negative self-tests: a corrupted expected event and reconnection time, a deliberate leak, a module with an import, an unresolved symbol and three runtime mutants all fail)"
+echo "test_wasm: ok (module $(stat -c %s "$tmp/vbm.wasm") bytes; negative self-tests: a corrupted expected event and reconnection time, a deliberate leak, a module with an import, an unresolved symbol and two runtime mutants all fail)"

@@ -3,11 +3,38 @@ import VbmSimd.Find
 /-! # The array machine
 
 The incremental machine of `LeanSse.Stream` on byte arrays instead of lists: the code the C interface runs. The same one-byte step, the same state, the same line split; every list is a
-`ByteArray` (a held line is appended to in place, a line is cut at its first colon with `extract`, the buffers are appended to). Events accumulate in `out` (the caller drains it).
+`ByteArray` (a held line is appended to in place, a line is cut at its first colon with `extract`, the buffers are appended to). Events accumulate in `outBuf` (the caller drains it).
 That it yields the reference's events and state for every chunking is `LeanSseProofs.Fast` (`fast_eq_parse`); the specification is not touched.
 Every loop reads an array by index, so nothing here builds a list. -/
 
 namespace LeanSse
+
+/-! ## The events' output layout
+
+The events a chunk completes are written, as they are dispatched, in the layout of the report that follows the last event ID string (`LeanSse/Abi.lean`): each event is its three lengths (type, data, last event ID: little-endian words)
+and the three byte strings. Nothing is allocated for an event but its bytes. `LeanSseProofs.Fast` says what the buffer holds (`Out.push_L`). -/
+
+/-- Seven zero bytes (built with `push`, once). -/
+def zeros7 : ByteArray := ((((((ByteArray.empty.push 0).push 0).push 0).push 0).push 0).push 0).push 0
+
+/-- The word `w`, little-endian. A word below 256 (nearly every length) is a byte and seven zero bytes; any other is eight pushes. -/
+def pushWord (b : ByteArray) (w : UInt64) : ByteArray :=
+  if w < 256 then b.push w.toUInt8 ++ zeros7 else
+  (((((((b.push w.toUInt8).push (w >>> 8).toUInt8).push (w >>> 16).toUInt8).push (w >>> 24).toUInt8).push (w >>> 32).toUInt8).push (w >>> 40).toUInt8).push (w >>> 48).toUInt8).push (w >>> 56).toUInt8
+
+/-- Twenty-four zero bytes (three words). -/
+def zeros24 : ByteArray := let z8 := zeros7.push 0; z8 ++ z8 ++ z8
+
+/-- One event of the report, any lengths: its three lengths (words), then its three byte strings. -/
+def packEventSlow (b ty da id : ByteArray) : ByteArray :=
+  (((pushWord (pushWord (pushWord b (UInt64.ofNat ty.size)) (UInt64.ofNat da.size)) (UInt64.ofNat id.size) ++ ty) ++ da) ++ id)
+
+/-- One event of the report: its three lengths, then its three byte strings. When every length is below 256 (nearly always) the three words are made in one append of zeros and three stores. -/
+def packEvent (b ty da id : ByteArray) : ByteArray :=
+  if ty.size < 256 ∧ da.size < 256 ∧ id.size < 256 then
+    let o := b.size
+    ((((((b ++ zeros24).set! o ty.size.toUInt8).set! (o + 8) da.size.toUInt8).set! (o + 16) id.size.toUInt8 ++ ty) ++ da) ++ id)
+  else packEventSlow b ty da id
 
 /-- A dispatched event (`Event`, on byte arrays). -/
 structure FEvent where
@@ -25,13 +52,15 @@ structure FProc where
   lastEventId : ByteArray := ByteArray.empty
   retry : Option UInt64 := none
 
-/-- The machine's state (`St`, on byte arrays): the held line is in reading order, and `out` holds the events dispatched since it was last emptied. -/
+/-- The machine's state (`St`, on byte arrays): the held line is in reading order, and `outBuf` holds the `outN` events dispatched since it was last emptied, in the layout of the report (`packEvent`). -/
 structure FSt where
   bom : Nat := 0
   skipLF : Bool := false
   line : ByteArray := ByteArray.empty
   p : FProc := {}
-  out : Array FEvent := #[]
+  outBuf : ByteArray := ByteArray.empty
+  /-- how many events `outBuf` holds -/
+  outN : Nat := 0
 
 /-- The constants of the algorithm, as byte arrays (built with `push`: the freestanding runtime has no `List.toByteArray`). -/
 def fEventB : ByteArray := (((ByteArray.empty.push 101).push 118).push 101).push 110 |>.push 116
@@ -99,10 +128,14 @@ def bomPrefixB : Nat → ByteArray
   | 0 => ByteArray.empty
   | k + 1 => (bomPrefixB k).push (bomByte k)
 
-/-- `endLine`, with the event appended to `out`. -/
+/-- Append a dispatched event to the output. -/
+@[inline] def FSt.pushEv (s : FSt) (e : FEvent) : FSt := { s with outBuf := packEvent s.outBuf e.type e.data e.lastEventId, outN := s.outN + 1 }
+
+/-- `endLine`, with the event appended to the output. -/
 def endLineF (s : FSt) (skip : Bool) : FSt :=
   let (p', e) := procLineF s.p s.line
-  { s with line := ByteArray.empty, p := p', skipLF := skip, out := match e with | some ev => s.out.push ev | none => s.out }
+  let s' := { s with line := ByteArray.empty, p := p', skipLF := skip }
+  match e with | some ev => s'.pushEv ev | none => s'
 
 /-- `stepBody`. -/
 def stepBodyF (s : FSt) (b : UInt8) : FSt :=
@@ -174,8 +207,8 @@ def feedBulk (c : ByteArray) (i : Nat) (s : FSt) : FSt :=
           if h3 : s.line.size = 0 ∧ j < c.size then
             -- the whole line is in this chunk and nothing is held: run it from the chunk, then take its terminator
             let r := procSliceF s.p c i j (by omega)
-            let o := (match r.2 with | some ev => s.out.push ev | none => s.out)
-            feedBulk c (j + 1) { s with line := ByteArray.empty, p := r.1, skipLF := ((c[j]'h3.2) == CR), out := o }
+            let s' : FSt := { s with line := ByteArray.empty, p := r.1, skipLF := ((c[j]'h3.2) == CR) }
+            feedBulk c (j + 1) (match r.2 with | some ev => s'.pushEv ev | none => s')
           else feedBulk c j { s with skipLF := false, line := c.copySlice i s.line s.line.size (j - i) false }
         else feedBulk c (i + 1) (stepF s c[i])
   else s
@@ -189,54 +222,54 @@ def dataLine (c : ByteArray) (i j : Nat) : Bool :=
 /-- The state of `feedBulk` with every field a separate argument of the loop (the held line, the data buffer, its flag, the type, the id buffer, the last event id, the retry time, the events). The same machine,
 `feedFast_eq` (proofs) says so; what changes is what the compiled loop allocates: the common line (a `data` line that is cut from the chunk, a blank line that dispatches) updates the arguments and builds no state record,
 no pair and no option; only the event itself and the copy of a data value are allocated. Any other case builds the record and takes the step of `feedBulk`. -/
-def feedFast (c : ByteArray) (i : Nat) (bom : Nat) (skipLF : Bool) (line data : ByteArray) (hasData : Bool) (type idBuf lastId : ByteArray) (retry : Option UInt64) (out : Array FEvent) : FSt :=
+def feedFast (c : ByteArray) (i : Nat) (bom : Nat) (skipLF : Bool) (line data : ByteArray) (hasData : Bool) (type idBuf lastId : ByteArray) (retry : Option UInt64) (outBuf : ByteArray) (outN : Nat) : FSt :=
   if h : i < c.size then
     if bom < 3 then
-      let t := stepF ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, out⟩ c[i]
-      feedFast c (i + 1) t.bom t.skipLF t.line t.p.data t.p.hasData t.p.type t.p.idBuf t.p.lastEventId t.p.retry t.out
+      let t := stepF ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, outBuf, outN⟩ c[i]
+      feedFast c (i + 1) t.bom t.skipLF t.line t.p.data t.p.hasData t.p.type t.p.idBuf t.p.lastEventId t.p.retry t.outBuf t.outN
     else
       match hj : scanFast c i with
       | j =>
         if h2 : i < j then
           if h3 : line.size = 0 ∧ j < c.size then
             if h4 : c[i]'(by omega) = COLON then
-              feedFast c (j + 1) bom ((c[j]'h3.2) == CR) ByteArray.empty data hasData type idBuf lastId retry out
+              feedFast c (j + 1) bom ((c[j]'h3.2) == CR) ByteArray.empty data hasData type idBuf lastId retry outBuf outN
             else
               if dataLine c i j then
                 -- a `data:` line: the colon is at i + 4, nothing is scanned for
                 let vs := valStart c j (by omega) (i + 4)
-                if hasData then feedFast c (j + 1) bom ((c[j]'h3.2) == CR) ByteArray.empty (c.copySlice vs (data.push LF) (data.size + 1) (j - vs) false) true type idBuf lastId retry out
-                else feedFast c (j + 1) bom ((c[j]'h3.2) == CR) ByteArray.empty (c.extract vs j) true type idBuf lastId retry out
+                if hasData then feedFast c (j + 1) bom ((c[j]'h3.2) == CR) ByteArray.empty (c.copySlice vs (data.push LF) (data.size + 1) (j - vs) false) true type idBuf lastId retry outBuf outN
+                else feedFast c (j + 1) bom ((c[j]'h3.2) == CR) ByteArray.empty (c.extract vs j) true type idBuf lastId retry outBuf outN
               else
                 let k := colonFrom c j (by omega) i
                 let vs := valStart c j (by omega) k
                 if isDataAt c i k then
-                  if hasData then feedFast c (j + 1) bom ((c[j]'h3.2) == CR) ByteArray.empty (c.copySlice vs (data.push LF) (data.size + 1) (j - vs) false) true type idBuf lastId retry out
-                  else feedFast c (j + 1) bom ((c[j]'h3.2) == CR) ByteArray.empty (c.extract vs j) true type idBuf lastId retry out
+                  if hasData then feedFast c (j + 1) bom ((c[j]'h3.2) == CR) ByteArray.empty (c.copySlice vs (data.push LF) (data.size + 1) (j - vs) false) true type idBuf lastId retry outBuf outN
+                  else feedFast c (j + 1) bom ((c[j]'h3.2) == CR) ByteArray.empty (c.extract vs j) true type idBuf lastId retry outBuf outN
                 else
                   let p := applyFieldS ⟨data, hasData, type, idBuf, lastId, retry⟩ c i k vs j
-                  feedFast c (j + 1) bom ((c[j]'h3.2) == CR) ByteArray.empty p.data p.hasData p.type p.idBuf p.lastEventId p.retry out
-          else feedFast c j bom false (c.copySlice i line line.size (j - i) false) data hasData type idBuf lastId retry out
+                  feedFast c (j + 1) bom ((c[j]'h3.2) == CR) ByteArray.empty p.data p.hasData p.type p.idBuf p.lastEventId p.retry outBuf outN
+          else feedFast c j bom false (c.copySlice i line line.size (j - i) false) data hasData type idBuf lastId retry outBuf outN
         else
           if skipLF && c[i] == LF then
             -- the LF of a CR LF: nothing but the flag
-            feedFast c (i + 1) bom false line data hasData type idBuf lastId retry out
+            feedFast c (i + 1) bom false line data hasData type idBuf lastId retry outBuf outN
           else if line.size = 0 then
             -- a blank line: dispatch (`dispatchF`), the held line is empty
-            if hasData then feedFast c (i + 1) bom (c[i] == CR) ByteArray.empty ByteArray.empty false ByteArray.empty idBuf idBuf retry (out.push ⟨if type.size = 0 then tMessageB else type, data, idBuf⟩)
-            else feedFast c (i + 1) bom (c[i] == CR) ByteArray.empty data false ByteArray.empty idBuf idBuf retry out
+            if hasData then feedFast c (i + 1) bom (c[i] == CR) ByteArray.empty ByteArray.empty false ByteArray.empty idBuf idBuf retry (packEvent outBuf (if type.size = 0 then tMessageB else type) data idBuf) (outN + 1)
+            else feedFast c (i + 1) bom (c[i] == CR) ByteArray.empty data false ByteArray.empty idBuf idBuf retry outBuf outN
           else
-            let t := stepF ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, out⟩ c[i]
-            feedFast c (i + 1) t.bom t.skipLF t.line t.p.data t.p.hasData t.p.type t.p.idBuf t.p.lastEventId t.p.retry t.out
-  else ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, out⟩
+            let t := stepF ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, outBuf, outN⟩ c[i]
+            feedFast c (i + 1) t.bom t.skipLF t.line t.p.data t.p.hasData t.p.type t.p.idBuf t.p.lastEventId t.p.retry t.outBuf t.outN
+  else ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, outBuf, outN⟩
 termination_by c.size - i
 decreasing_by all_goals omega
 
-/-- A chunk through the machine: the events it completed are appended to `out`. A chunk of 64 bytes or more runs `feedFast`, the loop of `feedBulk` on unpacked state (a chunk of a few bytes would pay more for taking the state apart and putting it back than the loop saves); `feedF_eq`. -/
+/-- A chunk through the machine: the events it completed are appended to `outBuf`. A chunk of 64 bytes or more runs `feedFast`, the loop of `feedBulk` on unpacked state (a chunk of a few bytes would pay more for taking the state apart and putting it back than the loop saves); `feedF_eq`. -/
 def feedF (s : FSt) (c : ByteArray) : FSt :=
   if 64 ≤ c.size then
     match s with
-    | ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, out⟩ => feedFast c 0 bom skipLF line data hasData type idBuf lastId retry out
+    | ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, outBuf, outN⟩ => feedFast c 0 bom skipLF line data hasData type idBuf lastId retry outBuf outN
   else if c.size < 3 then feedLoop c 0 s
   else feedBulk c 0 s
 
