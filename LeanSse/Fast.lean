@@ -85,6 +85,19 @@ def packMessage (b da id : ByteArray) : ByteArray :=
 def packEventT (b ty da id : ByteArray) : ByteArray :=
   if ty.size = 0 then packMessage b da id else packEvent b ty da id
 
+/-- `packMessage b (c.extract vs j) id`, the data copied from the chunk into the buffer in one copy, no array made for it. -/
+def packMessageS (b c : ByteArray) (vs j : Nat) (id : ByteArray) : ByteArray :=
+  if j - vs < 256 ∧ id.size < 256 then
+    let o := b.size
+    let h := ((b ++ hdrMessage).set! (o + 8) (j - vs).toUInt8).set! (o + 16) id.size.toUInt8
+    let h := c.copySlice vs h h.size (j - vs) false
+    if id.size = 0 then h else h ++ id
+  else packMessage b (c.extract vs j) id
+
+/-- `packEventT b ty (c.extract vs j) id`. -/
+def packEventTS (b ty c : ByteArray) (vs j : Nat) (id : ByteArray) : ByteArray :=
+  if ty.size = 0 then packMessageS b c vs j id else packEvent b ty (c.extract vs j) id
+
 /-- Index of the first colon at or after `i` (`l.size` if none). -/
 def colonAt (l : ByteArray) (i : Nat) : Nat :=
   if h : i < l.size then (if l[i] = COLON then i else colonAt l (i + 1)) else l.size
@@ -231,6 +244,14 @@ def feedBulk (c : ByteArray) (i : Nat) (s : FSt) : FSt :=
 termination_by c.size - i
 decreasing_by all_goals omega
 
+/-- After the line end at `j` of a chunk (`j < c.size`; a CR LF is one line end): the place of the byte that ends an empty line straight after it, or `c.size` when the next line is not empty or not in the chunk (always past `j`). -/
+def blankAfter (c : ByteArray) (j : Nat) (hj : j < c.size) : { k : Nat // j < k } :=
+  if h : j + 1 < c.size then
+    if c[j] == CR && c[j + 1] == LF then
+      (if h2 : j + 2 < c.size then (if c[j + 2] == LF || c[j + 2] == CR then ⟨j + 2, by omega⟩ else ⟨c.size, hj⟩) else ⟨c.size, hj⟩)
+    else (if c[j + 1] == LF || c[j + 1] == CR then ⟨j + 1, by omega⟩ else ⟨c.size, hj⟩)
+  else ⟨c.size, hj⟩
+
 /-- Does the line `c[i, j)` open with `data:` (the name `data`, then the colon)? Five byte tests, nothing built: then its first colon is at `i + 4`, with no scan (`colonFrom_dataLine`). -/
 @[inline] def dataLine (c : ByteArray) (i j : Nat) : Bool :=
   if h : i + 4 < j ∧ j ≤ c.size then c[i]'(by omega) == 100 && c[i + 1]'(by omega) == 97 && c[i + 2]'(by omega) == 116 && c[i + 3]'(by omega) == 97 && c[i + 4]'(by omega) == COLON else false
@@ -255,7 +276,13 @@ def feedFast (c : ByteArray) (i : Nat) (bom : Nat) (skipLF : Bool) (line data : 
                 -- a `data:` line: the colon is at i + 4, nothing is scanned for
                 let vs := valStart c j (by omega) (i + 4)
                 if hasData then feedFast c (j + 1) bom ((c[j]'h3.2) == CR) ByteArray.empty (c.copySlice vs (data.push LF) (data.size + 1) (j - vs) false) true type idBuf lastId retry outBuf outN
-                else feedFast c (j + 1) bom ((c[j]'h3.2) == CR) ByteArray.empty (c.extract vs j) true type idBuf lastId retry outBuf outN
+                else
+                  match blankAfter c j h3.2 with
+                  | ⟨k, hkj⟩ =>
+                    if hk : k < c.size then
+                      -- the data line is followed by an empty line: the event is complete, and is written from the chunk (no data array)
+                      feedFast c (k + 1) bom ((c[k]'hk) == CR) ByteArray.empty ByteArray.empty false ByteArray.empty idBuf idBuf retry (packEventTS outBuf type c vs j idBuf) (outN + 1)
+                    else feedFast c (j + 1) bom ((c[j]'h3.2) == CR) ByteArray.empty (c.extract vs j) true type idBuf lastId retry outBuf outN
               else
                 let k := colonFrom c j (by omega) i
                 let vs := valStart c j (by omega) k
