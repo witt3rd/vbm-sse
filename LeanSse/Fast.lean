@@ -86,7 +86,7 @@ def packEventT (b ty da id : ByteArray) : ByteArray :=
   if ty.size = 0 then packMessage b da id else packEvent b ty da id
 
 /-- `packMessage b (c.extract vs j) id`, the data copied from the chunk into the buffer in one copy, no array made for it. -/
-def packMessageS (b c : ByteArray) (vs j : Nat) (id : ByteArray) : ByteArray :=
+@[inline] def packMessageS (b c : ByteArray) (vs j : Nat) (id : ByteArray) : ByteArray :=
   if j - vs < 256 ∧ id.size < 256 then
     let o := b.size
     let h := ((b ++ hdrMessage).set! (o + 8) (j - vs).toUInt8).set! (o + 16) id.size.toUInt8
@@ -95,7 +95,7 @@ def packMessageS (b c : ByteArray) (vs j : Nat) (id : ByteArray) : ByteArray :=
   else packMessage b (c.extract vs j) id
 
 /-- `packEventT b ty (c.extract vs j) id`. -/
-def packEventTS (b ty c : ByteArray) (vs j : Nat) (id : ByteArray) : ByteArray :=
+@[inline] def packEventTS (b ty c : ByteArray) (vs j : Nat) (id : ByteArray) : ByteArray :=
   if ty.size = 0 then packMessageS b c vs j id else packEvent b ty (c.extract vs j) id
 
 /-- Index of the first colon at or after `i` (`l.size` if none). -/
@@ -245,7 +245,7 @@ termination_by c.size - i
 decreasing_by all_goals omega
 
 /-- After the line end at `j` of a chunk (`j < c.size`; a CR LF is one line end): the place of the byte that ends an empty line straight after it, or `c.size` when the next line is not empty or not in the chunk (always past `j`). -/
-def blankAfter (c : ByteArray) (j : Nat) (hj : j < c.size) : { k : Nat // j < k } :=
+@[inline] def blankAfter (c : ByteArray) (j : Nat) (hj : j < c.size) : { k : Nat // j < k } :=
   if h : j + 1 < c.size then
     if c[j] == CR && c[j + 1] == LF then
       (if h2 : j + 2 < c.size then (if c[j + 2] == LF || c[j + 2] == CR then ⟨j + 2, by omega⟩ else ⟨c.size, hj⟩) else ⟨c.size, hj⟩)

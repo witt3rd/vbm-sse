@@ -62,7 +62,7 @@ def headRep (retry : Option UInt64) (id : ByteArray) : ByteArray := report { p :
 @[export vbm_sse_lean_feed] def abiFeed (r : RSt) (c : ByteArray) : RSt :=
   match r with
   | ⟨st, kRetry, kId, head⟩ =>
-    RSt.refresh (feedF { st with outBuf := if 64 ≤ c.size then ByteArray.emptyWithCapacity (2 * c.size + 64) else ByteArray.empty, outN := 0 } c) kRetry kId head
+    RSt.refresh (feedF { st with outBuf := if 64 ≤ c.size then ByteArray.emptyWithCapacity (min (2 * c.size + 64) 1048576) else ByteArray.empty, outN := 0 } c) kRetry kId head
 
 /-- The report of the reader after its last chunk (the caller keeps its own reference to the state: it increments before the call). -/
 @[export vbm_sse_lean_report] def abiReport (r : RSt) : ByteArray := if r.st.outN = 0 then r.head else report r.st

@@ -184,7 +184,7 @@ theorem refresh_st (st' : FSt) (kRetry : Option UInt64) (kId head : ByteArray) :
   unfold RSt.refresh; split <;> rfl
 
 theorem abiFeed_st (r : RSt) (c : ByteArray) :
-    (abiFeed r c).st = feedF ({ r.st with outBuf := if 64 ≤ c.size then ByteArray.emptyWithCapacity (2 * c.size + 64) else ByteArray.empty, outN := 0 } : FSt) c := by
+    (abiFeed r c).st = feedF ({ r.st with outBuf := if 64 ≤ c.size then ByteArray.emptyWithCapacity (min (2 * c.size + 64) 1048576) else ByteArray.empty, outN := 0 } : FSt) c := by
   obtain ⟨st, kRetry, kId, head⟩ := r
   exact refresh_st _ _ _ _
 
@@ -219,7 +219,7 @@ theorem abi_feed_report (r : RSt) (hI : RInv r) (c : ByteArray) (hF : Fits (abiF
     rdReport (L (abiReport (abiFeed r c))) =
       some ((feed (absS r.st) (L c)).1.p.retry, (feed (absS r.st) (L c)).1.p.lastEventId, (feed (absS r.st) (L c)).2) := by
   have hab := abiFeed_st r c
-  generalize hs0 : ({ r.st with outBuf := if 64 ≤ c.size then ByteArray.emptyWithCapacity (2 * c.size + 64) else ByteArray.empty, outN := 0 } : FSt) = s0 at hab
+  generalize hs0 : ({ r.st with outBuf := if 64 ≤ c.size then ByteArray.emptyWithCapacity (min (2 * c.size + 64) 1048576) else ByteArray.empty, outN := 0 } : FSt) = s0 at hab
   have hb0 : L s0.outBuf = [] := by rw [← hs0]; simp only; split <;> simp
   have hn0 : s0.outN = 0 := by rw [← hs0]
   have e1 : absS s0 = absS r.st := by rw [← hs0]; rfl
