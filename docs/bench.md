@@ -38,7 +38,7 @@ The floor (scorecard `DECISIONS` 1) is on the primary corpus only: the subject's
 
 ## What it shows today
 
-The numbers of a run are in the scorecard's card (`registry/scores` in the scorecard repository) and are not repeated here: a number in a document goes stale, a card is stamped with the commit. Read them honestly: the array machine takes **one byte at a time** (the bulk scan for line ends is the open claim `fast-machine-refines`, "partly", in the ledger), and the C interface builds a report per chunk, so at 4096 bytes it is far behind a parser that searches for line ends in bulk, and at 1 byte the cost of a call and a report dominates every reader. The bench exists to make that gap a number the next landing has to move.
+The numbers of a run are in the scorecard's card (`registry/scores` in the scorecard repository) and are not repeated here: a number in a document goes stale, a card is stamped with the commit. Read them honestly: the array machine searches for line ends in bulk (the pinned vbm-simd search), but the C interface builds a report per chunk, so at 1 and 7 bytes the cost of a call and a report dominates every reader, and at 4096 bytes the cost is per event (a search, the value copied once into the report's layout, the loop's own work). `docs/perf/` has the profile of the compiled library by instruction (`docs/perf/README.md`), what each speed change moved (`docs/perf/results.md`) and the harness that measures it: the figure a change is judged by is instructions per byte, which does not move with the load of the host; the MB/s of this bench does.
 
 ## Run it
 
