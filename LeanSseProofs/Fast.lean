@@ -113,11 +113,19 @@ theorem le64_small (n : Nat) (h : n < 256) : le64 n = [UInt8.ofNat n, 0, 0, 0, 0
     show n / 1099511627776 = 0 by omega, show n / 281474976710656 = 0 by omega, show n / 72057594037927936 = 0 by omega]
   simp
 
+theorem L_ite_append (h id : ByteArray) : L (if id.size = 0 then h else h ++ id) = L h ++ L id := by
+  split
+  · rename_i hz
+    have : L id = [] := by rw [← List.length_eq_zero_iff, L_length]; exact hz
+    rw [this]; simp
+  · simp
+
 theorem packEvent_L (b ty da id : ByteArray) : L (packEvent b ty da id) = L b ++ encEvent ⟨L ty, L da, L id⟩ := by
   unfold packEvent
   by_cases h : ty.size < 256 ∧ da.size < 256 ∧ id.size < 256
   · obtain ⟨h1, h2, h3⟩ := h
     simp only [h1, h2, h3, and_self, ↓reduceIte]
+    rw [L_ite_append]
     simp only [L_append, L_set!, L_zeros24, L_length]
     unfold encEvent
     simp only [L_length, le64_small _ h1, le64_small _ h2, le64_small _ h3]
@@ -127,6 +135,35 @@ theorem packEvent_L (b ty da id : ByteArray) : L (packEvent b ty da id) = L b ++
     simp [List.set, Nat.toUInt8]
   · simp only [h, ↓reduceIte]
     exact packEventSlow_L b ty da id
+
+theorem L_tMessageB_bytes : L tMessageB = [109, 101, 115, 115, 97, 103, 101] := by
+  simp [tMessageB, L, ByteArray.data_push]
+
+theorem L_hdrMessage : L hdrMessage = [7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 109, 101, 115, 115, 97, 103, 101] := by
+  simp [hdrMessage, L_append, L_set!, L_zeros24, L_tMessageB_bytes]
+
+theorem packMessage_L (b da id : ByteArray) : L (packMessage b da id) = L b ++ encEvent ⟨L tMessageB, L da, L id⟩ := by
+  unfold packMessage
+  by_cases h : da.size < 256 ∧ id.size < 256
+  · obtain ⟨h2, h3⟩ := h
+    simp only [h2, h3, and_self, ↓reduceIte]
+    rw [L_ite_append]
+    simp only [L_append, L_set!, L_hdrMessage, L_length]
+    unfold encEvent
+    simp only [L_length, L_tMessageB_bytes, le64_small _ h2, le64_small _ h3, List.length_cons, List.length_nil]
+    have hl : (L b).length = b.size := L_length b
+    rw [List.set_append_right _ _ (by omega), List.set_append_right _ _ (by omega)]
+    rw [hl, show b.size + 8 - b.size = 8 by omega, show b.size + 16 - b.size = 16 by omega]
+    rw [le64_eq]
+    simp [List.set, Nat.toUInt8]
+  · simp only [h, ↓reduceIte]
+    exact packEvent_L b tMessageB da id
+
+theorem packEventT_eq (b ty da id : ByteArray) : packEventT b ty da id = packEvent b (if ty.size = 0 then tMessageB else ty) da id := by
+  unfold packEventT
+  split
+  · apply L_inj.mp; rw [packMessage_L, packEvent_L]
+  · rfl
 
 /-- The layout of a list of events. -/
 def encEvents (es : List Event) : Bytes := (es.map encEvent).flatten
@@ -688,7 +725,7 @@ theorem feedBulk_eq (c : ByteArray) (i : Nat) (s : FSt) : feedBulk c i s = feedL
 theorem stepF_blank (bom : Nat) (skipLF : Bool) (line data : ByteArray) (hasData : Bool) (type idBuf lastId : ByteArray) (retry : Option UInt64) (outBuf : ByteArray) (outN : Nat) (b : UInt8)
     (hb : ¬ bom < 3) (hl : line.size = 0) (he : b = LF ∨ b = CR) (hsk : (!(skipLF && b == LF)) = true) :
     stepF ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, outBuf, outN⟩ b =
-      if hasData then ⟨bom, b == CR, ByteArray.empty, ⟨ByteArray.empty, false, ByteArray.empty, idBuf, idBuf, retry⟩, packEvent outBuf (if type.size = 0 then tMessageB else type) data idBuf, outN + 1⟩
+      if hasData then ⟨bom, b == CR, ByteArray.empty, ⟨ByteArray.empty, false, ByteArray.empty, idBuf, idBuf, retry⟩, packEventT outBuf type data idBuf, outN + 1⟩
       else ⟨bom, b == CR, ByteArray.empty, ⟨data, false, ByteArray.empty, idBuf, idBuf, retry⟩, outBuf, outN⟩ := by
   have hl' : line = ByteArray.empty := by
     apply ByteArray.ext; exact Array.eq_empty_of_size_eq_zero hl
@@ -698,10 +735,10 @@ theorem stepF_blank (bom : Nat) (skipLF : Bool) (line data : ByteArray) (hasData
   unfold stepBodyF endLineF procLineF dispatchF
   rcases he with h | h
   · subst h
-    simp [LF, CR, FSt.pushEv] at hsk ⊢
-    cases hasData <;> simp_all [LF, CR, FSt.pushEv]
+    simp [LF, CR, FSt.pushEv, packEventT_eq] at hsk ⊢
+    cases hasData <;> simp_all [LF, CR, FSt.pushEv, packEventT_eq]
   · subst h
-    cases hasData <;> simp [LF, CR, FSt.pushEv]
+    cases hasData <;> simp [LF, CR, FSt.pushEv, packEventT_eq]
 
 /-- The LF of a CR LF: only the flag changes. -/
 theorem stepF_skip (bom : Nat) (line data : ByteArray) (hasData : Bool) (type idBuf lastId : ByteArray) (retry : Option UInt64) (outBuf : ByteArray) (outN : Nat) (b : UInt8)

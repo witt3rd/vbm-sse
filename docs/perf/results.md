@@ -4,13 +4,13 @@ User instructions per input byte (hardware counter, deterministic; `docs/perf/ru
 
 ## Instructions per byte, by slice
 
-| corpus | before: 1 / 7 / 4096 | slice 1 | slice 2 |
-|---|---|---|---|
-| small-events (primary at 4096) | 913.2 / 170.9 / 13.61 | 666.2 / 159.3 / 11.97 | 495.8 / 140.7 / 10.48 |
-| large-data | 877.8 / 148.5 / 4.78 | 649.5 / 138.8 / 4.64 | 476.6 / 116.2 / 4.64 |
-| ends-crlf | 911.0 / 172.5 / 15.46 | 665.4 / 159.8 / 12.72 | 495.0 / 141.1 / 11.27 |
-| ends-cr | 913.2 / 170.8 / 13.65 | 666.2 / 159.3 / 12.02 | 495.9 / 140.7 / 10.53 |
-| ends-mixed | 911.8 / 170.8 / 13.85 | 665.5 / 159.0 / 12.00 | 494.5 / 139.8 / 10.69 |
+| corpus | before: 1 / 7 / 4096 | slice 1 | slice 2 | slice 3 |
+|---|---|---|---|---|
+| small-events (primary at 4096) | 913.2 / 170.9 / 13.61 | 666.2 / 159.3 / 11.97 | 495.8 / 140.7 / 10.48 | 495.8 / 140.7 / 9.39 |
+| large-data | 877.8 / 148.5 / 4.78 | 649.5 / 138.8 / 4.64 | 476.6 / 116.2 / 4.64 | 476.6 / 116.2 / 4.46 |
+| ends-crlf | 911.0 / 172.5 / 15.46 | 665.4 / 159.8 / 12.72 | 495.0 / 141.1 / 11.27 | 495.0 / 141.1 / 10.25 |
+| ends-cr | 913.2 / 170.8 / 13.65 | 666.2 / 159.3 / 12.02 | 495.9 / 140.7 / 10.53 | 495.9 / 140.7 / 9.45 |
+| ends-mixed | 911.8 / 170.8 / 13.85 | 665.5 / 159.0 / 12.00 | 494.5 / 139.8 / 10.69 | 494.5 / 139.8 / 9.72 |
 
 ## Where the instructions went (before)
 
@@ -27,3 +27,8 @@ small-events at 4096, sampled by instruction: `lean_byte_array_copy_slice` 23%, 
 * the dispatched events are packed into the output buffer as they are dispatched (`FSt.outBuf`, `outN`), in the layout the report carries them in, instead of being allocated as records, collected in an array and packed by the report: no per-event record, array push, release walk or size pass. `fast_eq_parse` now says the buffer holds `encEvents` of the reference's events and `outN` their number;
 * the buffer is made once per chunk with room for the chunk (no growth by doubling);
 * the reader keeps the report of a state with no completed event together with the reconnection time and last event ID it was made from (`RSt`); a chunk that completes no event and changes neither is answered with it as it stands (`abi_feed_report` is stated for the reader and proved with `RInv`). The runtime's `Array.push` had no caller left and is removed with its two runtime mutants.
+
+## Slice 3: the event header in one append
+
+* an event of the default type is laid out by `packMessage`: the first two words and the type `message` are one constant (`hdrMessage`) appended once, the two lengths stored; an empty last event ID is not appended (`packEventT`, proved equal to `packEvent` with the default type in place: `packEventT_eq`);
+* `dataLine` and `valStart` are inlined.

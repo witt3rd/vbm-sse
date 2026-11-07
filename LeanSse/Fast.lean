@@ -33,7 +33,8 @@ def packEventSlow (b ty da id : ByteArray) : ByteArray :=
 def packEvent (b ty da id : ByteArray) : ByteArray :=
   if ty.size < 256 ∧ da.size < 256 ∧ id.size < 256 then
     let o := b.size
-    ((((((b ++ zeros24).set! o ty.size.toUInt8).set! (o + 8) da.size.toUInt8).set! (o + 16) id.size.toUInt8 ++ ty) ++ da) ++ id)
+    let h := ((((b ++ zeros24).set! o ty.size.toUInt8).set! (o + 8) da.size.toUInt8).set! (o + 16) id.size.toUInt8 ++ ty) ++ da
+    if id.size = 0 then h else h ++ id
   else packEventSlow b ty da id
 
 /-- A dispatched event (`Event`, on byte arrays). -/
@@ -68,6 +69,21 @@ def fDataB : ByteArray := (((ByteArray.empty.push 100).push 97).push 116).push 9
 def fIdB : ByteArray := (ByteArray.empty.push 105).push 100
 def fRetryB : ByteArray := (((ByteArray.empty.push 114).push 101).push 116).push 114 |>.push 121
 def tMessageB : ByteArray := (((((ByteArray.empty.push 109).push 101).push 115).push 115).push 97).push 103 |>.push 101
+
+/-- The first two words of an event of type `message` (the default type) and the type itself: the type length 7, then the two words of the data and ID lengths (zero here), then `message`. -/
+def hdrMessage : ByteArray := (zeros24.set! 0 7) ++ tMessageB
+
+/-- `packEvent b tMessageB da id`, with the three words and the type made in one append and two stores. -/
+def packMessage (b da id : ByteArray) : ByteArray :=
+  if da.size < 256 ∧ id.size < 256 then
+    let o := b.size
+    let h := (((b ++ hdrMessage).set! (o + 8) da.size.toUInt8).set! (o + 16) id.size.toUInt8) ++ da
+    if id.size = 0 then h else h ++ id
+  else packEvent b tMessageB da id
+
+/-- The event of a dispatch: the type is `message` when none was set. -/
+def packEventT (b ty da id : ByteArray) : ByteArray :=
+  if ty.size = 0 then packMessage b da id else packEvent b ty da id
 
 /-- Index of the first colon at or after `i` (`l.size` if none). -/
 def colonAt (l : ByteArray) (i : Nat) : Nat :=
@@ -183,7 +199,7 @@ def applyFieldS (p : FProc) (c : ByteArray) (i k s j : Nat) : FProc :=
   else applyFieldF p (c.extract i k) (c.extract s j)
 
 /-- Where the value of a field line `c[i, j)` starts, given the place `k` of its first colon (`j` if none): after the colon and one space if there is one. -/
-def valStart (c : ByteArray) (j : Nat) (hj : j ≤ c.size) (k : Nat) : Nat :=
+@[inline] def valStart (c : ByteArray) (j : Nat) (hj : j ≤ c.size) (k : Nat) : Nat :=
   if k < j then (if h2 : k + 1 < j then (if c[k + 1]'(by omega) = SPACE then k + 2 else k + 1) else k + 1) else j
 
 /-- `procLine` on the line `c[i, j)` of a chunk, without copying the line out of it. -/
@@ -216,7 +232,7 @@ termination_by c.size - i
 decreasing_by all_goals omega
 
 /-- Does the line `c[i, j)` open with `data:` (the name `data`, then the colon)? Five byte tests, nothing built: then its first colon is at `i + 4`, with no scan (`colonFrom_dataLine`). -/
-def dataLine (c : ByteArray) (i j : Nat) : Bool :=
+@[inline] def dataLine (c : ByteArray) (i j : Nat) : Bool :=
   if h : i + 4 < j ∧ j ≤ c.size then c[i]'(by omega) == 100 && c[i + 1]'(by omega) == 97 && c[i + 2]'(by omega) == 116 && c[i + 3]'(by omega) == 97 && c[i + 4]'(by omega) == COLON else false
 
 /-- The state of `feedBulk` with every field a separate argument of the loop (the held line, the data buffer, its flag, the type, the id buffer, the last event id, the retry time, the events). The same machine,
@@ -256,7 +272,7 @@ def feedFast (c : ByteArray) (i : Nat) (bom : Nat) (skipLF : Bool) (line data : 
             feedFast c (i + 1) bom false line data hasData type idBuf lastId retry outBuf outN
           else if line.size = 0 then
             -- a blank line: dispatch (`dispatchF`), the held line is empty
-            if hasData then feedFast c (i + 1) bom (c[i] == CR) ByteArray.empty ByteArray.empty false ByteArray.empty idBuf idBuf retry (packEvent outBuf (if type.size = 0 then tMessageB else type) data idBuf) (outN + 1)
+            if hasData then feedFast c (i + 1) bom (c[i] == CR) ByteArray.empty ByteArray.empty false ByteArray.empty idBuf idBuf retry (packEventT outBuf type data idBuf) (outN + 1)
             else feedFast c (i + 1) bom (c[i] == CR) ByteArray.empty data false ByteArray.empty idBuf idBuf retry outBuf outN
           else
             let t := stepF ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, outBuf, outN⟩ c[i]
