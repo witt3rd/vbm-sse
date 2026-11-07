@@ -130,8 +130,9 @@ termination_by c.size - i
 /-- The line-end set of the byte search (`VbmSimd.findFirstOf`): LF and CR, with CR repeated to fill the four slots. -/
 def eolSet : UInt32 := 0x0D0D0D0A
 
-/-- `scanEol`, by the byte search of `vbm-simd` (an AVX2 kernel where the CPU has it, the proved portable word search otherwise; `VbmSimd.findFirstOf_spec`: it is the byte-at-a-time machine). -/
-def scanFast (c : ByteArray) (i : Nat) : Nat := VbmSimd.findFirstOf c eolSet i
+/-- `scanEol`, by the byte search of `vbm-simd` (an AVX2 kernel where the CPU has it, the proved portable word search otherwise; `VbmSimd.findFirstOf_spec`: it is the byte-at-a-time machine). A line end at `i` itself (the blank line, one per event) is answered by one test, with no call to the search. -/
+def scanFast (c : ByteArray) (i : Nat) : Nat :=
+  if h : i < c.size then (if c[i] == LF || c[i] == CR then i else VbmSimd.findFirstOf c eolSet i) else VbmSimd.findFirstOf c eolSet i
 
 /-- Index of the first colon of `c` in `[i, j)` (`j` if none). -/
 def colonFrom (c : ByteArray) (j : Nat) (hj : j ≤ c.size) (i : Nat) : Nat :=
@@ -236,6 +237,7 @@ def feedF (s : FSt) (c : ByteArray) : FSt :=
   if 64 ≤ c.size then
     match s with
     | ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, out⟩ => feedFast c 0 bom skipLF line data hasData type idBuf lastId retry out
+  else if c.size < 3 then feedLoop c 0 s
   else feedBulk c 0 s
 
 /-- A stream given as a list of chunks. -/

@@ -249,8 +249,30 @@ lean_obj_res lean_byte_array_push(lean_obj_arg a, uint8_t b) {
 }
 
 static size_t nat_or_max(lean_object *n) { return lean_is_scalar(n) ? lean_unbox(n) : (size_t)-1; }
-/* `ByteArray.copySlice src srcOff dest destOff len exact`: src borrowed, dest owned (the Nats are scalars or clamp). */
-lean_obj_res lean_byte_array_copy_slice(lean_obj_arg src, lean_obj_arg so, lean_obj_arg dest, lean_obj_arg dof, lean_obj_arg ln, uint8_t exact) {
+/* Copy n bytes between two ranges that do not overlap: a head and a tail (which may overlap each other, never the source with the destination), no byte loop. */
+static inline void copy_apart_(unsigned char *d, const unsigned char *s, size_t n) {
+#ifdef __wasm__
+  memcpy(d, s, n);   /* memory.copy */
+#else
+  if (n >= 16) {
+    if (n >= 32) {   /* 32 bytes a step, the last step ending at the last byte (it may repeat bytes the step before wrote: the same values) */
+      size_t i = 0;
+      for (; i + 32 < n; i += 32) { v16_t a = *(const v16_t *)(s + i), b = *(const v16_t *)(s + i + 16); *(v16_t *)(d + i) = a; *(v16_t *)(d + i + 16) = b; }
+      v16_t a = *(const v16_t *)(s + n - 32), b = *(const v16_t *)(s + n - 16); *(v16_t *)(d + n - 32) = a; *(v16_t *)(d + n - 16) = b;
+      return;
+    }
+    v16_t a = *(const v16_t *)s, b = *(const v16_t *)(s + n - 16); *(v16_t *)d = a; *(v16_t *)(d + n - 16) = b;
+  } else if (n >= 8) {
+    uint64_t a, b; __builtin_memcpy_inline(&a, s, 8); __builtin_memcpy_inline(&b, s + n - 8, 8); __builtin_memcpy_inline(d, &a, 8); __builtin_memcpy_inline(d + n - 8, &b, 8);
+  } else if (n >= 4) {
+    uint32_t a, b; __builtin_memcpy_inline(&a, s, 4); __builtin_memcpy_inline(&b, s + n - 4, 4); __builtin_memcpy_inline(d, &a, 4); __builtin_memcpy_inline(d + n - 4, &b, 4);
+  } else {
+    for (size_t i = 0; i < n; i++) d[i] = s[i];
+  }
+#endif
+}
+/* The general case of `ByteArray.copySlice` (below): src borrowed, dest owned, any Nats, any sharing, src may be dest. */
+static __attribute__((noinline)) lean_obj_res copy_slice_general_(lean_obj_arg src, lean_obj_arg so, lean_obj_arg dest, lean_obj_arg dof, lean_obj_arg ln, uint8_t exact) {
   size_t ssz = lean_sarray_size(src), dsz = lean_sarray_size(dest), src_off = nat_or_max(so);
   if (src_off > ssz) return dest;
   size_t len = nat_or_max(ln); if (len > ssz - src_off) len = ssz - src_off;
@@ -266,6 +288,23 @@ lean_obj_res lean_byte_array_copy_slice(lean_obj_arg src, lean_obj_arg so, lean_
   if (src == r) memmove(lean_sarray_cptr(r) + dest_off, lean_sarray_cptr(src) + src_off, len);   /* the same array: the ranges may overlap */
   else memcpy(lean_sarray_cptr(r) + dest_off, lean_sarray_cptr(src) + src_off, len);
   return r;
+}
+/* `ByteArray.copySlice src srcOff dest destOff len exact`: src borrowed, dest owned (the Nats are scalars or clamp). The common call (every Nat a scalar, dest unshared with room, src another array) is the
+ * first branch: the same arithmetic as the general case, with no allocation and no overlap to consider; every other call is the general case. */
+lean_obj_res lean_byte_array_copy_slice(lean_obj_arg src, lean_obj_arg so, lean_obj_arg dest, lean_obj_arg dof, lean_obj_arg ln, uint8_t exact) {
+  if (__builtin_expect(((size_t)so & (size_t)dof & (size_t)ln & 1) && src != dest && lean_is_exclusive(dest), 1)) {
+    size_t ssz = lean_sarray_size(src), dsz = lean_sarray_size(dest), src_off = lean_unbox(so);
+    if (src_off > ssz) return dest;
+    size_t len = lean_unbox(ln); if (len > ssz - src_off) len = ssz - src_off;
+    size_t dest_off = lean_unbox(dof); if (dest_off > dsz) dest_off = dsz;
+    size_t new_size = dest_off + len; if (new_size < dsz) new_size = dsz;
+    if (new_size <= lean_sarray_capacity(dest)) {
+      lean_to_sarray(dest)->m_size = new_size;
+      copy_apart_(lean_sarray_cptr(dest) + dest_off, lean_sarray_cptr(src) + src_off, len);
+      return dest;
+    }
+  }
+  return copy_slice_general_(src, so, dest, dof, ln, exact);
 }
 
 

@@ -324,7 +324,15 @@ theorem scanEol_eq_findSpec (c : ByteArray) : ∀ f i, c.size - i ≤ f → scan
     · simp [hi]
 
 theorem scanFast_eq (c : ByteArray) (i : Nat) : scanFast c i = scanEol c i := by
-  rw [scanFast, VbmSimdProofs.findFirstOf_spec, scanEol_eq_findSpec c _ i (Nat.le_refl _)]
+  have hs : VbmSimd.findFirstOf c eolSet i = scanEol c i := by
+    rw [VbmSimdProofs.findFirstOf_spec, scanEol_eq_findSpec c _ i (Nat.le_refl _)]
+  unfold scanFast
+  split
+  · split
+    · rename_i h hc
+      rw [scanEol]; simp [h, hc]
+    · exact hs
+  · exact hs
 
 theorem copySlice_append (c : ByteArray) (i j : Nat) (a : ByteArray) (e : Bool) :
     c.copySlice i a a.size (j - i) e = a ++ c.extract i j := by
@@ -690,7 +698,9 @@ theorem feedF_eq (s : FSt) (c : ByteArray) : feedF s c = feedBulk c 0 s := by
   split
   · obtain ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, out⟩ := s
     exact feedFast_eq c 0 bom skipLF line data hasData type idBuf lastId retry out
-  · rfl
+  · split
+    · exact (feedBulk_eq c 0 s).symm
+    · rfl
 
 /-- The array machine reads a chunk as the list machine does: the same state, and the events appended to `out` are the events the list machine returns. -/
 theorem feedF_sim (s : FSt) (c : ByteArray) : absS (feedF s c) = (feed (absS s) (L c)).1 ∧
