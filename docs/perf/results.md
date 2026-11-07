@@ -134,3 +134,35 @@ MB/s against the scalar comparators (best of three, alternating: slice 6, slice 
 | ends-mixed | 1 | 39.3 | 39.6 | 24.8 | 9.8 | 158% | 160% |
 
 Rows at chunks 1 and 7 move by tens of percent between runs on this host (small-events at 7 bytes read 105% of the best comparator on a quiet host, 84 to 87% here, with the library running the same instructions): the call is dominated by the C interface's chunk copy, the allocation of the report and the reader, not by the parser.
+
+### Round two, start and now
+
+Same run, same host (x, load 14 before, 33 after; the runs alternating, best of three): the library at the start of the round (`e5cd1b6`, after slice 5) against the library after slice 7, and the two scalar comparators. Instructions per byte are the first table (slice 5 to slice 7, which is the main of that day: 7.86 to 6.27 on `small-events` at 4096; the main of the same day also moved the pinned vbm-simd, and the count on this host was 6.14 with it).
+
+| corpus | chunk | start | now | eventsource-parser | eventsource-stream | start / best | now / best |
+|---|---|---|---|---|---|---|---|
+| **small-events** | **4096** | 2341.6 | 2658.2 | 1741.1 | 315.6 | 134% | **153%** |
+| small-events | 7 | 136.6 | 117.9 | 131.3 | 51.1 | 104% | 90% |
+| small-events | 1 | 37.8 | 36.8 | 23.8 | 10.1 | 159% | 155% |
+| large-data | 4096 | 2970.2 | 3469.9 | 1739.4 | 327.9 | 171% | 199% |
+| large-data | 7 | 195.2 | 191.8 | 129.0 | 1.4 | 151% | 149% |
+| large-data | 1 | 43.8 | 45.6 | 23.1 | 0.2 | 190% | 197% |
+| ends-crlf | 4096 | 1798.2 | 2254.1 | 1040.9 | 248.4 | 173% | 217% |
+| ends-crlf | 7 | 122.4 | 121.4 | 114.9 | 50.5 | 107% | 106% |
+| ends-crlf | 1 | 31.9 | 29.8 | 23.0 | 7.2 | 139% | 130% |
+| ends-cr | 4096 | 1968.4 | 2303.0 | 1338.9 | 312.0 | 147% | 172% |
+| ends-cr | 7 | 102.4 | 121.9 | 99.6 | 44.9 | 103% | 122% |
+| ends-cr | 1 | 32.3 | 35.8 | 23.1 | 9.3 | 140% | 155% |
+| ends-mixed | 4096 | 1524.0 | 1801.0 | 857.1 | 277.7 | 178% | 210% |
+| ends-mixed | 7 | 131.0 | 105.7 | 99.8 | 34.2 | 131% | 106% |
+| ends-mixed | 1 | 32.0 | 29.1 | 15.4 | 6.4 | 208% | 189% |
+
+The 4096 rows, the network read, gained 13 to 25% in MB/s (the ratio to the best scalar comparator on the primary row 134% to 153%). The rows at chunks 1 and 7 run the same instructions as before (140.2 to 140.9 per byte at 7, 492.8 to 492.7 at 1) and moved by tens of percent in both directions between runs: a focused alternation of the two builds (minimum of seven runs, load 27 to 55) gave, in cycles per byte, small-events at 7 bytes 27.24 start / 27.53 now, at 1 byte 101.9 / 99.2; ends-mixed at 7 bytes 27.81 / 28.32, at 1 byte 157.8 / 158.1: within 2% either way, the noise of this host.
+
+### What is left, and the ceiling, after round two
+
+Profile of `small-events` at 4096 by instruction (6.14 instructions per byte, about 740 per event): `lean_byte_array_copy_slice` 29% (three calls an event: the event header, the value, the last event ID, each about 45 to 70 instructions with its own prologue, plus the copy of the chunk's events into the report buffer), `feedFastU` 25% (the loop itself), the AVX2 search 17% (one call an event), allocation and release 11% (the three small arrays of each `id:` line, the buffers of the chunk), the chunk's copy in the C interface 3.7%, `ByteArray.extract` 2.5%, and the field functions of the rare lines 4%.
+
+The classes of cost found in vbm-json, in order of what they were here: checked `Nat` arithmetic and the layers around a native call (present, the largest single item: 19% of the instructions, more than the 10% estimated at the end of round one because the boxed positions also went through two wrapper functions of the search; gone from the hot loop); per-token records and options (gone in round one); runtime copy calls per small run (present: three an event, the biggest item left, 29%, and each costs its prologue more than its bytes: the event is 120 bytes); buffers grown by doubling (gone); an extra copy of the output (present, 2%, gone: the report is written in place). What is not paid any more: the report's second buffer and copy, the boxed positions, the search's wrapper layers.
+
+The ceiling for this design on this corpus is about 4.5 to 5 instructions per byte (from 6.14: another 1.2 to 1.35 times), and every step towards it is smaller than the last: (a) the three copy calls of an event as inline stores (an inline primitive in the pinned vbm-simd header, a new carve-out with its model test: about 0.5 per byte); (b) a fast path for the `id:` and `event:` lines, no name or value arrays, no `applyField` (about 0.2 per byte on this corpus, which has an `id:` every tenth event, and nothing on a stream without them); (c) the chunk's copy in the C interface as vector stores (0.15). The cost of a call itself (the reader's record, the cached report, the C interface's input array) is about 500 instructions: it shows only at chunks of a few bytes, where every reader pays per call and this one is level with the best scalar comparator (90 to 155% on `small-events`, by chunk size and by run).
