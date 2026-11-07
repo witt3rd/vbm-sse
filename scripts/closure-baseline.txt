@@ -1,6 +1,6 @@
 # unverified definitions reachable from the entry points, per module (scripts/ClosureGate.lean); may only fall
-# carveout_mass: the expression nodes of the documented carve-outs of scripts/carveouts.txt (the four @[extern] shims of the pinned vbm-simd: findAvx2, hasAvx2, ld64, ctz; docs/trust-ledger.md T13 says what each is, why it cannot be proved and how it is checked). They are OUTSIDE the specified share, which is therefore measured over everything else and has the floor 100; this mass may only fall without approval.
+# carveout_mass: the expression nodes of the documented carve-outs of scripts/carveouts.txt (the six @[extern] shims of the pinned vbm-simd: findAvx2, hasAvx2, findNeon, hasNeon, ld64, ctz; docs/trust-ledger.md T13 says what each is, why it cannot be proved and how it is checked). They are OUTSIDE the specified share, which is therefore measured over everything else and has the floor 100; this mass may only fall without approval.
 mass 0
-dep_mass 3122
-carveout_mass 36
+dep_mass 3257
+carveout_mass 56
 specified_share 16000 16000

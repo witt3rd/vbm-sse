@@ -324,9 +324,9 @@ theorem us_add (a : USize) (n : Nat) (hn : n < 4294967296) (h : a.toNat + n < US
   rw [USize.toNat_add, us_lit n hn]
   exact Nat.mod_eq_of_lt h
 
-/-- The search for a line end on a word position: the AVX2 kernel where the CPU has it, the portable search otherwise (`VbmSimd.findFirstOf` takes the same two paths, through a `Nat`). -/
+/-- The search for a line end on a word position: the AVX2 kernel where the CPU has it, the NEON kernel on aarch64, the portable search otherwise (`VbmSimd.findFirstOf` takes the same three paths, through a `Nat`). -/
 @[inline] def findEolU (c : ByteArray) (i : USize) : USize :=
-  if VbmSimd.hasAvx2 () then VbmSimd.findAvx2 c eolSet i else (VbmSimd.findSwar c eolSet i.toNat).toUSize
+  if VbmSimd.hasAvx2 () then VbmSimd.findAvx2 c eolSet i else if VbmSimd.hasNeon () then VbmSimd.findNeon c eolSet i else (VbmSimd.findSwar c eolSet i.toNat).toUSize
 
 /-- `scanFast` on a word position (the result is a word: `scanFastU_eq`). -/
 @[inline] def scanFastU (c : ByteArray) (hw : c.size < USize.size) (i : USize) : USize :=

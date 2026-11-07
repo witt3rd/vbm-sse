@@ -988,7 +988,10 @@ theorem findEolU_eq (c : ByteArray) (x : Nat) (hx : x < USize.size) : findEolU c
   split
   · unfold VbmSimd.findAvx2
     rw [tu_toNat hx, ← scanEol_eq_findSpec c c.size x (by omega)]
-  · rw [tu_toNat hx, VbmSimdProofs.findSwar_spec, ← scanEol_eq_findSpec c c.size x (by omega)]
+  · split
+    · unfold VbmSimd.findNeon
+      rw [tu_toNat hx, ← scanEol_eq_findSpec c c.size x (by omega)]
+    · rw [tu_toNat hx, VbmSimdProofs.findSwar_spec, ← scanEol_eq_findSpec c c.size x (by omega)]
 
 theorem scanFastU_eq (c : ByteArray) (hw : c.size < USize.size) (x : Nat) (hx : x ≤ c.size) : scanFastU c hw x.toUSize = (scanEol c x).toUSize := by
   have hx' : x < USize.size := by omega

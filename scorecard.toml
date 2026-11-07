@@ -143,6 +143,6 @@ attack_timeout_seconds = 1800
 window_hours = 168
 
 [floors]
-# 100 is the floor of a library (the hub's rule, DECISIONS 1). vbm-sse falls short of it by exactly its trusted boundary, and the card says so: 36 expression nodes of four @[extern] shims of the pinned vbm-simd
-# (findAvx2, hasAvx2, ld64, ctz; docs/trust-ledger.md T13 says why each stays trusted). scripts/closure-baseline.txt holds the exact fraction (a ratchet: scripts/gate-diff-improving.sh refuses a fall of it and of this floor).
+# 100 is the floor of a library (the hub's rule, DECISIONS 1). vbm-sse falls short of it by exactly its trusted boundary, and the card says so: 56 expression nodes of six @[extern] shims of the pinned vbm-simd
+# (findAvx2, hasAvx2, findNeon, hasNeon, ld64, ctz; docs/trust-ledger.md T13 says why each stays trusted). scripts/closure-baseline.txt holds the exact fraction (a ratchet: scripts/gate-diff-improving.sh refuses a fall of it and of this floor).
 specified_share = 100
