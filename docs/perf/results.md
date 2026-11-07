@@ -4,13 +4,13 @@ User instructions per input byte (hardware counter, deterministic; `docs/perf/ru
 
 ## Instructions per byte, by slice
 
-| corpus | before: 1 / 7 / 4096 | slice 1 | slice 2 | slice 3 | slice 4 | slice 5 | slice 6 |
-|---|---|---|---|---|---|---|---|
-| small-events (primary at 4096) | 913.2 / 170.9 / 13.61 | 666.2 / 159.3 / 11.97 | 495.8 / 140.7 / 10.48 | 495.8 / 140.7 / 9.39 | 495.8 / 140.7 / 8.20 | 492.8 / 140.2 / 7.86 | 492.8 / 140.2 / 6.38 |
-| large-data | 877.8 / 148.5 / 4.78 | 649.5 / 138.8 / 4.64 | 476.6 / 116.2 / 4.64 | 476.6 / 116.2 / 4.46 | 476.6 / 116.2 / 4.47 | 473.6 / 115.8 / 4.44 | 473.6 / 115.8 / 3.72 |
-| ends-crlf | 911.0 / 172.5 / 15.46 | 665.4 / 159.8 / 12.72 | 495.0 / 141.1 / 11.27 | 495.0 / 141.1 / 10.25 | 495.0 / 141.2 / 8.78 | 492.0 / 140.7 / 8.42 | 492.0 / 140.7 / 6.60 |
-| ends-cr | 913.2 / 170.8 / 13.65 | 666.2 / 159.3 / 12.02 | 495.9 / 140.7 / 10.53 | 495.9 / 140.7 / 9.45 | 495.9 / 140.7 / 8.26 | 492.9 / 140.3 / 7.90 | 492.9 / 140.3 / 6.40 |
-| ends-mixed | 911.8 / 170.8 / 13.85 | 665.5 / 159.0 / 12.00 | 494.5 / 139.8 / 10.69 | 494.5 / 139.8 / 9.72 | 494.5 / 139.8 / 8.75 | 491.5 / 139.4 / 8.44 | 491.5 / 139.4 / 6.81 |
+| corpus | before: 1 / 7 / 4096 | slice 1 | slice 2 | slice 3 | slice 4 | slice 5 | slice 6 | slice 7 |
+|---|---|---|---|---|---|---|---|---|
+| small-events (primary at 4096) | 913.2 / 170.9 / 13.61 | 666.2 / 159.3 / 11.97 | 495.8 / 140.7 / 10.48 | 495.8 / 140.7 / 9.39 | 495.8 / 140.7 / 8.20 | 492.8 / 140.2 / 7.86 | 492.8 / 140.2 / 6.38 | 492.7 / 141.0 / 6.27 |
+| large-data | 877.8 / 148.5 / 4.78 | 649.5 / 138.8 / 4.64 | 476.6 / 116.2 / 4.64 | 476.6 / 116.2 / 4.46 | 476.6 / 116.2 / 4.47 | 473.6 / 115.8 / 4.44 | 473.6 / 115.8 / 3.72 | 472.6 / 115.7 / 3.62 |
+| ends-crlf | 911.0 / 172.5 / 15.46 | 665.4 / 159.8 / 12.72 | 495.0 / 141.1 / 11.27 | 495.0 / 141.1 / 10.25 | 495.0 / 141.2 / 8.78 | 492.0 / 140.7 / 8.42 | 492.0 / 140.7 / 6.60 | 491.9 / 141.5 / 6.50 |
+| ends-cr | 913.2 / 170.8 / 13.65 | 666.2 / 159.3 / 12.02 | 495.9 / 140.7 / 10.53 | 495.9 / 140.7 / 9.45 | 495.9 / 140.7 / 8.26 | 492.9 / 140.3 / 7.90 | 492.9 / 140.3 / 6.40 | 492.8 / 141.1 / 6.29 |
+| ends-mixed | 911.8 / 170.8 / 13.85 | 665.5 / 159.0 / 12.00 | 494.5 / 139.8 / 10.69 | 494.5 / 139.8 / 9.72 | 494.5 / 139.8 / 8.75 | 491.5 / 139.4 / 8.44 | 491.5 / 139.4 / 6.81 | 491.3 / 140.1 / 6.71 |
 
 Slices 6 on are the second round (below, "Round two"): same harness, same host, the library of slice 5 as the base.
 
@@ -105,3 +105,32 @@ Against the scalar comparators (MB/s, best of three runs, the runs alternating: 
 | ends-mixed | 1 | 39.6 | 41.4 | 26.9 | 10.8 | 147% | 154% |
 
 Load 24 before the table, 17 after, on a host of 22 threads. At chunks 1 and 7 the library runs the same instructions as before the slice (the table of instructions per byte shows it); the differences in those rows, up to 20%, are the noise of a shared host (the same rows moved by the same amount in the other direction in other runs), not the slice.
+
+### Slice 7: the report written in place (`finishEv`)
+
+* a chunk of 64 bytes or more starts its output behind a copy of the cached report of the state it starts from (`startOut`: room for the chunk's events, with the header and the last event ID string already in the first `32 + idLen` bytes); the events are packed behind it by the loop as before; when the chunk has completed an event `finishEv` writes the header over those bytes (`reportIn`: one small header array copied over the room, in place) and the buffer **is** the report: `abiReport` hands it out, with no second buffer and no copy of the events. When the chunk changed the length of the last event ID (the room is the wrong size) the events are copied behind a header of the right size, once, as before. A chunk that completes no event (nearly every small chunk) is answered with the cached report and touches none of this;
+* proved: `reportIn_L` (the report written over the room is the header, the last event ID string and the events that were there; both cases), `finishEv_rep`, `abiFeed_spec`: `abi_feed_report` still says the report read back is the reference's events, last event ID and reconnection time. `outBufOf` and `finishEv` are calls of their own (`@[noinline]`): inlined, the compiler hoisted reference-count updates of the state in front of the test for an event and the small chunks paid 6 to 8% more instructions (measured, tried, not kept: a flag in the reader for the report being in place, which made the compiled code allocate a reader per chunk instead of reusing it).
+
+Instructions per byte: first table, slice 7: small-events at 4096 6.38 to 6.27 (2%), large-data 3.72 to 3.62 (3%); chunk 1 unchanged, chunk 7 0.5% more (a call to `finishEv` for the chunks that complete an event). The saving is what the first round estimated for the copy (about 0.1 instruction per byte: one buffer's allocation and one copy of the events).
+
+MB/s against the scalar comparators (best of three, alternating: slice 6, slice 7, the two comparators; host x, load 16 before, 18 after):
+
+| corpus | chunk | slice 6 | slice 7 | eventsource-parser | eventsource-stream | slice 6 / best | slice 7 / best |
+|---|---|---|---|---|---|---|---|
+| **small-events** | **4096** | 2206.5 | 2477.8 | 1386.2 | 234.1 | 159% | **179%** |
+| small-events | 7 | 121.1 | 125.4 | 143.8 | 50.3 | 84% | 87% |
+| small-events | 1 | 36.4 | 37.4 | 25.2 | 9.9 | 144% | 148% |
+| large-data | 4096 | 3185.0 | 3331.6 | 2355.5 | 306.4 | 135% | 141% |
+| large-data | 7 | 185.3 | 179.7 | 154.9 | 1.3 | 120% | 116% |
+| large-data | 1 | 38.6 | 40.0 | 24.4 | 0.2 | 158% | 164% |
+| ends-crlf | 4096 | 2401.7 | 2489.1 | 862.9 | 285.7 | 278% | 288% |
+| ends-crlf | 7 | 90.1 | 95.8 | 81.9 | 30.4 | 110% | 117% |
+| ends-crlf | 1 | 40.4 | 37.7 | 25.4 | 10.3 | 159% | 148% |
+| ends-cr | 4096 | 2319.9 | 2461.4 | 1154.6 | 264.1 | 201% | 213% |
+| ends-cr | 7 | 107.5 | 126.4 | 112.8 | 42.1 | 95% | 112% |
+| ends-cr | 1 | 35.7 | 31.1 | 22.7 | 10.0 | 157% | 137% |
+| ends-mixed | 4096 | 1255.0 | 1674.7 | 637.6 | 179.8 | 197% | 263% |
+| ends-mixed | 7 | 135.2 | 136.2 | 106.2 | 42.4 | 127% | 128% |
+| ends-mixed | 1 | 39.3 | 39.6 | 24.8 | 9.8 | 158% | 160% |
+
+Rows at chunks 1 and 7 move by tens of percent between runs on this host (small-events at 7 bytes read 105% of the best comparator on a quiet host, 84 to 87% here, with the library running the same instructions): the call is dominated by the C interface's chunk copy, the allocation of the report and the reader, not by the parser.

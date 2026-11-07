@@ -43,6 +43,8 @@ theorem L_take_size (a : ByteArray) : (L a).take a.size = L a := List.take_of_le
 /-- A natural number as eight little-endian bytes (modulo `2^64`). -/
 def le64 (n : Nat) : Bytes := (List.range 8).map fun i => UInt8.ofNat (n / 256 ^ i % 256)
 
+@[simp] theorem le64_length (n : Nat) : (le64 n).length = 8 := by simp [le64]
+
 theorem le64_eq (n : Nat) : le64 n = [UInt8.ofNat (n % 256), UInt8.ofNat (n / 256 % 256), UInt8.ofNat (n / 65536 % 256), UInt8.ofNat (n / 16777216 % 256),
     UInt8.ofNat (n / 4294967296 % 256), UInt8.ofNat (n / 1099511627776 % 256), UInt8.ofNat (n / 281474976710656 % 256), UInt8.ofNat (n / 72057594037927936 % 256)] := by
   simp [le64, List.range_succ]
