@@ -308,11 +308,152 @@ def feedFast (c : ByteArray) (i : Nat) (bom : Nat) (skipLF : Bool) (line data : 
 termination_by c.size - i
 decreasing_by all_goals omega
 
-/-- A chunk through the machine: the events it completed are appended to `outBuf`. A chunk of 64 bytes or more runs `feedFast`, the loop of `feedBulk` on unpacked state (a chunk of a few bytes would pay more for taking the state apart and putting it back than the loop saves); `feedF_eq`. -/
+/-! ## The same loop on word-sized positions
+
+`feedFastU` is `feedFast` with every position (the read position, the line end, the start of a value, the end of the empty line after it) a `USize` instead of a `Nat`: a byte is read by `uget`, a position is advanced by a machine add,
+the comparisons are word compares, and the search is called with the word. A `Nat` is a boxed scalar that every add, compare and index checks and unboxes; the loop runs once per line. It is the same machine:
+`LeanSseProofs.Fast.feedFastU_eq` says it is `feedFast` at the positions' values, for every chunk whose size leaves room for the loop's additions (`c.size + 8 < USize.size`: always, on any platform; `feedF` checks it). -/
+
+theorem usize_toNat (c : ByteArray) (hw : c.size < USize.size) : c.usize.toNat = c.size := by
+  simp only [ByteArray.usize, Nat.toUSize]
+  exact Nat.mod_eq_of_lt hw
+
+theorem us_lit (n : Nat) (h : n < 4294967296) : (OfNat.ofNat n : USize).toNat = n := USize.toNat_ofNat_of_lt_32 h
+
+theorem us_add (a : USize) (n : Nat) (hn : n < 4294967296) (h : a.toNat + n < USize.size) : (a + OfNat.ofNat n).toNat = a.toNat + n := by
+  rw [USize.toNat_add, us_lit n hn]
+  exact Nat.mod_eq_of_lt h
+
+/-- The search for a line end on a word position: the AVX2 kernel where the CPU has it, the portable search otherwise (`VbmSimd.findFirstOf` takes the same two paths, through a `Nat`). -/
+@[inline] def findEolU (c : ByteArray) (i : USize) : USize :=
+  if VbmSimd.hasAvx2 () then VbmSimd.findAvx2 c eolSet i else (VbmSimd.findSwar c eolSet i.toNat).toUSize
+
+/-- `scanFast` on a word position (the result is a word: `scanFastU_eq`). -/
+@[inline] def scanFastU (c : ByteArray) (hw : c.size < USize.size) (i : USize) : USize :=
+  if h : i < c.usize then
+    (if c.uget i (by have := USize.lt_iff_toNat_lt.mp h; have := usize_toNat c hw; omega) == LF || c.uget i (by have := USize.lt_iff_toNat_lt.mp h; have := usize_toNat c hw; omega) == CR then i else findEolU c i)
+  else findEolU c i
+
+/-- `valStart` on word positions. -/
+@[inline] def valStartU (c : ByteArray) (j : USize) (hj : j.toNat ≤ c.size) (k : USize) : USize :=
+  if k < j then (if h2 : k + 1 < j then (if c.uget (k + 1) (by have := USize.lt_iff_toNat_lt.mp h2; omega) = SPACE then k + 2 else k + 1) else k + 1) else j
+
+/-- `dataLine` on word positions. -/
+@[inline] def dataLineU (c : ByteArray) (hw : c.size + 8 < USize.size) (i j : USize) (hi : i.toNat < c.size) : Bool :=
+  if h : i + 4 < j ∧ j ≤ c.usize then
+    have e1 : (i + 1).toNat = i.toNat + 1 := us_add i 1 (by decide) (by omega)
+    have e2 : (i + 2).toNat = i.toNat + 2 := us_add i 2 (by decide) (by omega)
+    have e3 : (i + 3).toNat = i.toNat + 3 := us_add i 3 (by decide) (by omega)
+    have e4 : (i + 4).toNat = i.toNat + 4 := us_add i 4 (by decide) (by omega)
+    have h1 := USize.lt_iff_toNat_lt.mp h.1
+    have h2 := USize.le_iff_toNat_le.mp h.2
+    have h3 := usize_toNat c (by omega)
+    c.uget i hi == 100 && c.uget (i + 1) (by omega) == 97 && c.uget (i + 2) (by omega) == 116 && c.uget (i + 3) (by omega) == 97 && c.uget (i + 4) (by omega) == COLON
+  else false
+
+/-- `blankAfter` on word positions (the place `k` is greater than `j`: `blankAfterU_gt`). -/
+@[inline] def blankAfterU (c : ByteArray) (hw : c.size + 8 < USize.size) (j : USize) (hj : j.toNat < c.size) : USize :=
+  have hn : c.usize.toNat = c.size := usize_toNat c (by omega)
+  have e1 : (j + 1).toNat = j.toNat + 1 := us_add j 1 (by decide) (by omega)
+  have e2 : (j + 2).toNat = j.toNat + 2 := us_add j 2 (by decide) (by omega)
+  if h : j + 1 < c.usize then
+    have h1 := USize.lt_iff_toNat_lt.mp h
+    if c.uget j hj == CR && c.uget (j + 1) (by omega) == LF then
+      (if h2 : j + 2 < c.usize then
+        have h3 := USize.lt_iff_toNat_lt.mp h2
+        (if c.uget (j + 2) (by omega) == LF || c.uget (j + 2) (by omega) == CR then j + 2 else c.usize)
+      else c.usize)
+    else (if c.uget (j + 1) (by omega) == LF || c.uget (j + 1) (by omega) == CR then j + 1 else c.usize)
+  else c.usize
+
+theorem blankAfterU_gt (c : ByteArray) (hw : c.size + 8 < USize.size) (j : USize) (hj : j.toNat < c.size) : j.toNat < (blankAfterU c hw j hj).toNat := by
+  have hn : c.usize.toNat = c.size := usize_toNat c (by omega)
+  have e1 : (j + 1).toNat = j.toNat + 1 := us_add j 1 (by decide) (by omega)
+  have e2 : (j + 2).toNat = j.toNat + 2 := us_add j 2 (by decide) (by omega)
+  unfold blankAfterU
+  dsimp only
+  repeat' split
+  all_goals omega
+
+/-- `packMessageS` on word positions. -/
+@[inline] def packMessageSU (b c : ByteArray) (vs j : USize) (id : ByteArray) : ByteArray :=
+  if j - vs < 256 ∧ id.size < 256 then
+    let o := b.size
+    let h := ((b ++ hdrMessage).set! (o + 8) (j - vs).toUInt8).set! (o + 16) id.size.toUInt8
+    let h := c.copySlice vs.toNat h h.size (j - vs).toNat false
+    if id.size = 0 then h else h ++ id
+  else packMessage b (c.extract vs.toNat j.toNat) id
+
+/-- `packEventTS` on word positions. -/
+@[inline] def packEventTSU (b ty c : ByteArray) (vs j : USize) (id : ByteArray) : ByteArray :=
+  if ty.size = 0 then packMessageSU b c vs j id else packEvent b ty (c.extract vs.toNat j.toNat) id
+
+/-- `feedFast` on word positions. The same cases in the same order; only a rare line (a field that is not `data`, a comment, a line that is not whole in the chunk) uses the `Nat` functions at the positions' values. -/
+def feedFastU (c : ByteArray) (hw : c.size + 8 < USize.size) (i : USize) (bom : Nat) (skipLF : Bool) (line data : ByteArray) (hasData : Bool) (type idBuf lastId : ByteArray) (retry : Option UInt64) (outBuf : ByteArray) (outN : Nat) : FSt :=
+  if h : i < c.usize then
+    have hn : c.usize.toNat = c.size := usize_toNat c (by omega)
+    have hi : i.toNat < c.size := by have := USize.lt_iff_toNat_lt.mp h; omega
+    have e1 : (i + 1).toNat = i.toNat + 1 := us_add i 1 (by decide) (by omega)
+    if bom < 3 then
+      let t := stepF ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, outBuf, outN⟩ (c.uget i hi)
+      feedFastU c hw (i + 1) t.bom t.skipLF t.line t.p.data t.p.hasData t.p.type t.p.idBuf t.p.lastEventId t.p.retry t.outBuf t.outN
+    else
+      match hj : scanFastU c (by omega) i with
+      | j =>
+        if h2 : i < j then
+          if h3 : line.size = 0 ∧ j < c.usize then
+            have hjn : j.toNat < c.size := by have := USize.lt_iff_toNat_lt.mp h3.2; omega
+            have hij : i.toNat < j.toNat := USize.lt_iff_toNat_lt.mp h2
+            have e5 : (j + 1).toNat = j.toNat + 1 := us_add j 1 (by decide) (by omega)
+            if h4 : c.uget i hi = COLON then
+              feedFastU c hw (j + 1) bom ((c.uget j hjn) == CR) ByteArray.empty data hasData type idBuf lastId retry outBuf outN
+            else
+              if dataLineU c hw i j hi then
+                -- a `data:` line: the colon is at i + 4, nothing is scanned for
+                let vs := valStartU c j (by omega) (i + 4)
+                if hasData then feedFastU c hw (j + 1) bom ((c.uget j hjn) == CR) ByteArray.empty (c.copySlice vs.toNat (data.push LF) (data.size + 1) (j - vs).toNat false) true type idBuf lastId retry outBuf outN
+                else
+                  match hkk : blankAfterU c hw j hjn with
+                  | k =>
+                    have hkj : j.toNat < k.toNat := by rw [← hkk]; exact blankAfterU_gt c hw j hjn
+                    if hk : k < c.usize then
+                      have hkn : k.toNat < c.size := by have := USize.lt_iff_toNat_lt.mp hk; omega
+                      have e6 : (k + 1).toNat = k.toNat + 1 := us_add k 1 (by decide) (by omega)
+                      -- the data line is followed by an empty line: the event is complete, and is written from the chunk (no data array)
+                      feedFastU c hw (k + 1) bom ((c.uget k hkn) == CR) ByteArray.empty ByteArray.empty false ByteArray.empty idBuf idBuf retry (packEventTSU outBuf type c vs j idBuf) (outN + 1)
+                    else feedFastU c hw (j + 1) bom ((c.uget j hjn) == CR) ByteArray.empty (c.extract vs.toNat j.toNat) true type idBuf lastId retry outBuf outN
+              else
+                let k := colonFrom c j.toNat (by omega) i.toNat
+                let vs := valStart c j.toNat (by omega) k
+                if isDataAt c i.toNat k then
+                  if hasData then feedFastU c hw (j + 1) bom ((c.uget j hjn) == CR) ByteArray.empty (c.copySlice vs (data.push LF) (data.size + 1) (j.toNat - vs) false) true type idBuf lastId retry outBuf outN
+                  else feedFastU c hw (j + 1) bom ((c.uget j hjn) == CR) ByteArray.empty (c.extract vs j.toNat) true type idBuf lastId retry outBuf outN
+                else
+                  let p := applyFieldS ⟨data, hasData, type, idBuf, lastId, retry⟩ c i.toNat k vs j.toNat
+                  feedFastU c hw (j + 1) bom ((c.uget j hjn) == CR) ByteArray.empty p.data p.hasData p.type p.idBuf p.lastEventId p.retry outBuf outN
+          else feedFastU c hw j bom false (c.copySlice i.toNat line line.size (j - i).toNat false) data hasData type idBuf lastId retry outBuf outN
+        else
+          if skipLF && c.uget i hi == LF then
+            -- the LF of a CR LF: nothing but the flag
+            feedFastU c hw (i + 1) bom false line data hasData type idBuf lastId retry outBuf outN
+          else if line.size = 0 then
+            -- a blank line: dispatch (`dispatchF`), the held line is empty
+            if hasData then feedFastU c hw (i + 1) bom (c.uget i hi == CR) ByteArray.empty ByteArray.empty false ByteArray.empty idBuf idBuf retry (packEventT outBuf type data idBuf) (outN + 1)
+            else feedFastU c hw (i + 1) bom (c.uget i hi == CR) ByteArray.empty data false ByteArray.empty idBuf idBuf retry outBuf outN
+          else
+            let t := stepF ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, outBuf, outN⟩ (c.uget i hi)
+            feedFastU c hw (i + 1) t.bom t.skipLF t.line t.p.data t.p.hasData t.p.type t.p.idBuf t.p.lastEventId t.p.retry t.outBuf t.outN
+  else ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, outBuf, outN⟩
+termination_by c.size - i.toNat
+decreasing_by all_goals (simp only [USize.lt_iff_toNat_lt] at *; omega)
+
+/-- A chunk through the machine: the events it completed are appended to `outBuf`. A chunk of 64 bytes or more runs `feedFastU` (`feedFast` when its size leaves no room for the loop's additions in a word: never, on any real platform; the test is a round trip through a word, which needs no constant of the platform), the loop of `feedBulk` on unpacked state (a chunk of a few bytes would pay more for taking the state apart and putting it back than the loop saves); `feedF_eq`. -/
 def feedF (s : FSt) (c : ByteArray) : FSt :=
   if 64 ≤ c.size then
     match s with
-    | ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, outBuf, outN⟩ => feedFast c 0 bom skipLF line data hasData type idBuf lastId retry outBuf outN
+    | ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, outBuf, outN⟩ =>
+      if hw : (c.size + 8).toUSize.toNat = c.size + 8 then feedFastU c (by have := USize.toNat_lt_size (c.size + 8).toUSize; omega) 0 bom skipLF line data hasData type idBuf lastId retry outBuf outN
+      else feedFast c 0 bom skipLF line data hasData type idBuf lastId retry outBuf outN
   else if c.size < 3 then feedLoop c 0 s
   else feedBulk c 0 s
 

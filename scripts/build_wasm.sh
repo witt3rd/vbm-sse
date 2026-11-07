@@ -12,7 +12,8 @@ cf=(--target=wasm32 -nostdlib -O2 -ffreestanding -nostdlibinc -mbulk-memory -DND
 objs=()
 for f in Spec Stream Fast Abi; do
   [ -f ".lake/build/ir/LeanSse/$f.c" ] || { echo "build_wasm: .lake/build/ir/LeanSse/$f.c missing: run lake build LeanSse:static first" >&2; exit 1; }
-  clang "${cf[@]}" -c ".lake/build/ir/LeanSse/$f.c" -o "$tmp/$f.o"; objs+=("$tmp/$f.o")
+  # Fast.c calls the search and the CPU test of the pinned vbm-simd (T13) directly: it is compiled with that package's trusted header, as the package's own modules are
+  clang "${cf[@]}" -include .lake/packages/vbm-simd/include/vbm_simd.h -c ".lake/build/ir/LeanSse/$f.c" -o "$tmp/$f.o"; objs+=("$tmp/$f.o")
 done
 # the pinned verified library vbm-simd (lake package): the generated C of the modules the machine imports, compiled with its trusted header (include/vbm_simd.h of that package; its x86-64 AVX2 body is compiled only for x86-64)
 dep=.lake/packages/vbm-simd

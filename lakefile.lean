@@ -12,6 +12,8 @@ every consumer, so nothing from `Std` or `Lean` may be in its closure (a `Lean.*
 lean_lib LeanSse where
   -- every module under LeanSse/ is built, imported by the umbrella or not: a module cannot hide from the build
   globs := #[.andSubmodules `LeanSse]
+  -- `LeanSse.Fast` calls the search and the CPU test of vbm-simd (trust ledger T13) by their C names: its C is compiled with that package's header, as the package's own modules are
+  moreLeancArgs := #["-include", (__dir__ / ".lake" / "packages" / "vbm-simd" / "include" / "vbm_simd.h").toString]
 
 /-- The proofs: may import `Std` and `Lean`; NEVER linked (nothing in `LeanSse` may import it, and no executable or export depends on it). -/
 lean_lib LeanSseProofs where

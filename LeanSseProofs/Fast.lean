@@ -954,11 +954,355 @@ theorem feedFast_eq (c : ByteArray) (i : Nat) (bom : Nat) (skipLF : Bool) (line 
     rw [feedFast, feedBulk]
     simp only [h, ↓reduceDIte]
 
+/-! ## The loop on word positions is the loop on numbers
+
+`feedFastU` (positions are `USize`) is `feedFast` at the positions' values: every helper is shown equal to its `Nat` model (`scanFastU_eq`, `dataLineU_eq`, `blankAfterU_eq`, `valStartU_eq`, `packEventTSU_eq`), then the 14 cases of the loop (`feedFastU_eq`). -/
+
+theorem tu_toNat {x : Nat} (h : x < USize.size) : x.toUSize.toNat = x := by
+  simp only [Nat.toUSize]; exact (USize.toNat_ofNat_of_lt' h)
+
+theorem tu_add (x n : Nat) (hn : n < 4294967296) (h : x + n < USize.size) : x.toUSize + OfNat.ofNat n = (x + n).toUSize := by
+  apply USize.toNat_inj.mp
+  rw [us_add x.toUSize n hn (by rw [tu_toNat (by omega)]; exact h), tu_toNat (by omega), tu_toNat h]
+
+theorem tu_lt {a b : Nat} (ha : a < USize.size) (hb : b < USize.size) : a.toUSize < b.toUSize ↔ a < b := by
+  rw [USize.lt_iff_toNat_lt, tu_toNat ha, tu_toNat hb]
+
+theorem tu_le {a b : Nat} (ha : a < USize.size) (hb : b < USize.size) : a.toUSize ≤ b.toUSize ↔ a ≤ b := by
+  rw [USize.le_iff_toNat_le, tu_toNat ha, tu_toNat hb]
+
+theorem tu_usize (c : ByteArray) : c.usize = c.size.toUSize := rfl
+
+theorem tu_uget (c : ByteArray) (hw : c.size < USize.size) (x : Nat) (h : x.toUSize.toNat < c.size) (h' : x < c.size) : c.uget x.toUSize h = c[x] := by
+  obtain ⟨bs⟩ := c
+  have e : x.toUSize.toNat = x := tu_toNat (by omega)
+  show bs[x.toUSize.toNat]'h = bs[x]
+  simp only [e]
+
+
+theorem tu_uget' (c : ByteArray) (hw : c.size < USize.size) (y : USize) (x : Nat) (e : y = x.toUSize) (h : y.toNat < c.size) (h' : x < c.size) : c.uget y h = c[x] := by
+  subst e; exact tu_uget c hw x h h'
+
+theorem findEolU_eq (c : ByteArray) (x : Nat) (hx : x < USize.size) : findEolU c x.toUSize = (scanEol c x).toUSize := by
+  unfold findEolU
+  split
+  · unfold VbmSimd.findAvx2
+    rw [tu_toNat hx, ← scanEol_eq_findSpec c c.size x (by omega)]
+  · rw [tu_toNat hx, VbmSimdProofs.findSwar_spec, ← scanEol_eq_findSpec c c.size x (by omega)]
+
+theorem scanFastU_eq (c : ByteArray) (hw : c.size < USize.size) (x : Nat) (hx : x ≤ c.size) : scanFastU c hw x.toUSize = (scanEol c x).toUSize := by
+  have hx' : x < USize.size := by omega
+  have hl : x.toUSize < c.usize ↔ x < c.size := by rw [tu_usize, tu_lt hx' hw]
+  unfold scanFastU
+  by_cases h : x < c.size
+  · have h' := hl.mpr h
+    simp only [h', ↓reduceDIte]
+    have hg : c.uget x.toUSize (by rw [tu_toNat hx']; exact h) = c[x] := tu_uget c hw x _ h
+    rw [hg]
+    by_cases he : (c[x] == LF || c[x] == CR) = true
+    · simp only [he, ↓reduceIte]
+      rw [scanEol]; simp only [h, ↓reduceDIte, he, ↓reduceIte]
+    · simp only [he, Bool.false_eq_true, ↓reduceIte]
+      exact findEolU_eq c x hx'
+  · have h' : ¬ x.toUSize < c.usize := fun e => h (hl.mp e)
+    simp only [h', ↓reduceDIte]
+    exact findEolU_eq c x hx'
+
+
+theorem tu_add1 (x : Nat) (h : x + 1 < USize.size) : x.toUSize + 1 = (x + 1).toUSize := tu_add x 1 (by decide) h
+theorem tu_add2 (x : Nat) (h : x + 2 < USize.size) : x.toUSize + 2 = (x + 2).toUSize := tu_add x 2 (by decide) h
+theorem tu_add4 (x : Nat) (h : x + 4 < USize.size) : x.toUSize + 4 = (x + 4).toUSize := tu_add x 4 (by decide) h
+
+theorem valStartU_eq (c : ByteArray) (hw : c.size + 8 < USize.size) (j k : Nat) (hj : j ≤ c.size) (hk : k ≤ j) (hj' : j.toUSize.toNat ≤ c.size) :
+    valStartU c j.toUSize hj' k.toUSize = (valStart c j hj k).toUSize := by
+  unfold valStartU valStart
+  by_cases h1 : k < j
+  · have h1' : k.toUSize < j.toUSize := (tu_lt (by omega) (by omega)).mpr h1
+    simp only [h1, h1', ↓reduceIte]
+    by_cases h2 : k + 1 < j
+    · have h2' : k.toUSize + 1 < j.toUSize := by rw [tu_add1 k (by omega)]; exact (tu_lt (by omega) (by omega)).mpr h2
+      simp only [h2, h2', ↓reduceDIte]
+      have hg : c.uget (k.toUSize + 1) (by have := USize.lt_iff_toNat_lt.mp h2'; omega) = c[k + 1] :=
+        tu_uget' c (by omega) _ (k + 1) (tu_add1 k (by omega)) _ (by omega)
+      rw [hg]
+      split
+      · exact tu_add2 k (by omega)
+      · exact tu_add1 k (by omega)
+    · have h2' : ¬ k.toUSize + 1 < j.toUSize := by rw [tu_add1 k (by omega), tu_lt (by omega) (by omega)]; exact h2
+      simp only [h2, h2', ↓reduceDIte]
+      exact tu_add1 k (by omega)
+  · have h1' : ¬ k.toUSize < j.toUSize := by rw [tu_lt (by omega) (by omega)]; exact h1
+    simp only [h1, h1', ↓reduceIte]
+
+/-- A byte read at a word position is the byte read at the number. -/
+theorem tu_g (c : ByteArray) (hw : c.size < USize.size) (y : USize) (x : Nat) (e : y = x.toUSize) (hx : x < c.size) : ∀ h : y.toNat < c.size, c.uget y h = c[x] :=
+  fun h => tu_uget' c hw y x e h hx
+
+theorem dataLineU_eq (c : ByteArray) (hw : c.size + 8 < USize.size) (i j : Nat) (hi : i < c.size) (hj : j ≤ c.size) (hi' : i.toUSize.toNat < c.size) :
+    dataLineU c hw i.toUSize j.toUSize hi' = dataLine c i j := by
+  unfold dataLineU dataLine
+  have hu : c.usize = c.size.toUSize := rfl
+  by_cases h : i + 4 < j ∧ j ≤ c.size
+  · have h' : i.toUSize + 4 < j.toUSize ∧ j.toUSize ≤ c.usize := by
+      rw [tu_add4 i (by omega), hu]
+      exact ⟨(tu_lt (by omega) (by omega)).mpr h.1, (tu_le (by omega) (by omega)).mpr h.2⟩
+    simp only [h, h', and_self, ↓reduceDIte]
+    have g0 := tu_g c (by omega) i.toUSize i rfl hi
+    have g1 := tu_g c (by omega) (i.toUSize + 1) (i + 1) (tu_add1 i (by omega)) (by omega)
+    have g2 := tu_g c (by omega) (i.toUSize + 2) (i + 2) (tu_add2 i (by omega)) (by omega)
+    have g3 := tu_g c (by omega) (i.toUSize + 3) (i + 3) (tu_add i 3 (by decide) (by omega)) (by omega)
+    have g4 := tu_g c (by omega) (i.toUSize + 4) (i + 4) (tu_add4 i (by omega)) (by omega)
+    simp only [g0, g1, g2, g3, g4]
+  · have h' : ¬ (i.toUSize + 4 < j.toUSize ∧ j.toUSize ≤ c.usize) := by
+      rw [tu_add4 i (by omega), hu]
+      intro hh
+      exact h ⟨(tu_lt (by omega) (by omega)).mp hh.1, (tu_le (by omega) (by omega)).mp hh.2⟩
+    simp only [h, h', ↓reduceDIte]
+
+theorem blankAfterU_eq (c : ByteArray) (hw : c.size + 8 < USize.size) (j : Nat) (hj : j < c.size) (hj' : j.toUSize.toNat < c.size) :
+    blankAfterU c hw j.toUSize hj' = (blankAfter c j hj).1.toUSize := by
+  unfold blankAfterU blankAfter
+  have hu : c.usize = c.size.toUSize := rfl
+  have g0 := tu_g c (by omega) j.toUSize j rfl hj
+  by_cases h1 : j + 1 < c.size
+  · have h1' : j.toUSize + 1 < c.usize := by rw [tu_add1 j (by omega), hu]; exact (tu_lt (by omega) (by omega)).mpr h1
+    have g1 := tu_g c (by omega) (j.toUSize + 1) (j + 1) (tu_add1 j (by omega)) h1
+    simp only [h1, h1', ↓reduceDIte, g0, g1]
+    by_cases hcl : (c[j] == CR && c[j + 1] == LF) = true
+    · simp only [hcl, ↓reduceIte]
+      by_cases h2 : j + 2 < c.size
+      · have h2' : j.toUSize + 2 < c.usize := by rw [tu_add2 j (by omega), hu]; exact (tu_lt (by omega) (by omega)).mpr h2
+        have g2 := tu_g c (by omega) (j.toUSize + 2) (j + 2) (tu_add2 j (by omega)) h2
+        simp only [h2, h2', ↓reduceDIte, g2]
+        by_cases h5 : (c[j + 2] == LF || c[j + 2] == CR) = true
+        · simp only [h5, ↓reduceIte]; exact tu_add2 j (by omega)
+        · simp only [h5, Bool.false_eq_true, ↓reduceIte]; exact hu
+      · have h2' : ¬ j.toUSize + 2 < c.usize := by rw [tu_add2 j (by omega), hu, tu_lt (by omega) (by omega)]; exact h2
+        simp only [h2, h2', ↓reduceDIte]; exact hu
+    · simp only [hcl, Bool.false_eq_true, ↓reduceIte]
+      by_cases h5 : (c[j + 1] == LF || c[j + 1] == CR) = true
+      · simp only [h5, ↓reduceIte]; exact tu_add1 j (by omega)
+      · simp only [h5, Bool.false_eq_true, ↓reduceIte]; exact hu
+  · have h1' : ¬ j.toUSize + 1 < c.usize := by rw [tu_add1 j (by omega), hu, tu_lt (by omega) (by omega)]; exact h1
+    simp only [h1, h1', ↓reduceDIte]; exact hu
+
+theorem tu_sub (vs j : Nat) (hvs : vs ≤ j) (hj : j < USize.size) : (j.toUSize - vs.toUSize).toNat = j - vs := by
+  rw [USize.toNat_sub_of_le _ _ ((tu_le (by omega) hj).mpr hvs), tu_toNat hj, tu_toNat (by omega)]
+
+theorem tu_toUInt8 (x : USize) : x.toUInt8 = x.toNat.toUInt8 := by
+  rfl
+
+theorem packMessageSU_eq (b c : ByteArray) (vs j : Nat) (id : ByteArray) (hvs : vs ≤ j) (hj : j < USize.size) :
+    packMessageSU b c vs.toUSize j.toUSize id = packMessageS b c vs j id := by
+  unfold packMessageSU packMessageS
+  have e := tu_sub vs j hvs hj
+  have hl : j.toUSize - vs.toUSize < 256 ↔ j - vs < 256 := by
+    rw [USize.lt_iff_toNat_lt, e, us_lit 256 (by decide)]
+  rw [tu_toUInt8, e, tu_toNat (x := vs) (by omega), tu_toNat hj]
+  simp only [hl]
+
+theorem packEventTSU_eq (b ty c : ByteArray) (vs j : Nat) (id : ByteArray) (hvs : vs ≤ j) (hj : j < USize.size) :
+    packEventTSU b ty c vs.toUSize j.toUSize id = packEventTS b ty c vs j id := by
+  unfold packEventTSU packEventTS
+  rw [tu_toNat (by omega), tu_toNat hj, packMessageSU_eq b c vs j id hvs hj]
+
+theorem dataLine_lt (c : ByteArray) (i j : Nat) (h : dataLine c i j = true) : i + 4 < j ∧ j ≤ c.size := by
+  unfold dataLine at h
+  by_cases hb : i + 4 < j ∧ j ≤ c.size
+  · exact hb
+  · simp [hb] at h
+
+theorem blankAfter_le (c : ByteArray) (j : Nat) (hj : j < c.size) : (blankAfter c j hj).1 ≤ c.size := by
+  unfold blankAfter
+  repeat' split
+  all_goals simp only []
+  all_goals omega
+
+theorem cs_U (c : ByteArray) (vs j : Nat) (hv : vs ≤ j) (hj : j < USize.size) (X : ByteArray) (n : Nat) :
+    c.copySlice vs.toUSize.toNat X n (j.toUSize - vs.toUSize).toNat false = c.copySlice vs X n (j - vs) false := by
+  rw [tu_toNat (by omega), tu_sub vs j hv hj]
+
+theorem ex_U (c : ByteArray) (vs j : Nat) (hv : vs ≤ j) (hj : j < USize.size) : c.extract vs.toUSize.toNat j.toUSize.toNat = c.extract vs j := by
+  rw [tu_toNat (by omega), tu_toNat hj]
+
+set_option hygiene false in
+macro "fu_pre" : tactic => `(tactic| (
+  try (simp only [p] at ih; clear p)
+  try (simp only [vs] at ih; clear vs)
+  try (simp only [k] at hD ih; clear k)
+  have hlU : i.toUSize < c.usize := (tu_lt (by omega) (by omega)).mpr h
+  have g := tu_g c (by omega) i.toUSize i rfl h
+  have hJle : scanFast c i ≤ c.size := by rw [scanFast_eq]; exact scanEol_le c i hi
+  have hJge : i ≤ scanFast c i := by rw [scanFast_eq]; exact scanEol_ge c i hi
+  have hJU : scanFastU c (by omega) i.toUSize = (scanFast c i).toUSize := by rw [scanFastU_eq c _ i hi, scanFast_eq]
+  rw [feedFastU, feedFast]
+  simp only [h, hlU, hb, hJU, ↓reduceDIte, ↓reduceIte]
+  generalize scanFast c i = J at *))
+
+theorem feedFastU_eq (c : ByteArray) (hw : c.size + 8 < USize.size) (i : Nat) (hi : i ≤ c.size) (bom : Nat) (skipLF : Bool) (line data : ByteArray) (hasData : Bool) (type idBuf lastId : ByteArray) (retry : Option UInt64) (outBuf : ByteArray) (outN : Nat) :
+    feedFastU c hw i.toUSize bom skipLF line data hasData type idBuf lastId retry outBuf outN = feedFast c i bom skipLF line data hasData type idBuf lastId retry outBuf outN := by
+  induction i, bom, skipLF, line, data, hasData, type, idBuf, lastId, retry, outBuf, outN using feedFast.induct c with
+  | case1 i bom skipLF line data hasData type idBuf lastId retry outBuf outN h hb t ih =>
+    have hl : i.toUSize < c.usize := (tu_lt (by omega) (by omega)).mpr h
+    have g := tu_g c (by omega) i.toUSize i rfl h
+    rw [feedFastU, feedFast]
+    simp only [h, hl, hb, ↓reduceDIte, ↓reduceIte, g]
+    rw [tu_add1 i (by omega)]
+    exact ih (by omega)
+  | case14 i bom skipLF line data hasData type idBuf lastId retry outBuf outN h =>
+    have hl : ¬ i.toUSize < c.usize := fun e => h ((tu_lt (by omega) (by omega)).mp e)
+    rw [feedFastU, feedFast]
+    simp only [h, hl, ↓reduceDIte]
+  | case2 i bom skipLF line data hasData type idBuf lastId retry outBuf outN h hb h4 h2 h3 ih =>
+    fu_pre
+    have c1 : i.toUSize < J.toUSize := (tu_lt (by omega) (by omega)).mpr h2
+    have c2 : J.toUSize < c.usize := (tu_lt (by omega) (by omega)).mpr h3.2
+    have gJ := tu_g c (by omega) J.toUSize J rfl h3.2
+    simp only [c1, c2, h2, h3, h4, g, gJ, and_self, ↓reduceDIte, ↓reduceIte]
+    rw [tu_add1 J (by omega)]
+    exact ih (by omega)
+  | case3 i bom skipLF line data type idBuf lastId retry outBuf outN h hb h4 h2 h3 hdl vs ih =>
+    fu_pre
+    have c1 : i.toUSize < J.toUSize := (tu_lt (by omega) (by omega)).mpr h2
+    have c2 : J.toUSize < c.usize := (tu_lt (by omega) (by omega)).mpr h3.2
+    have gJ := tu_g c (by omega) J.toUSize J rfl h3.2
+    have gi := tu_g c (by omega) i.toUSize i rfl h
+    obtain ⟨hdl1, hdl2⟩ := dataLine_lt c i J hdl
+    have dl : ∀ hh, dataLineU c hw i.toUSize J.toUSize hh = true := fun hh => by rw [dataLineU_eq c hw i J h (by omega) hh]; exact hdl
+    have hvs := valStart_le c J (by omega) (i + 4)
+    have vsU : ∀ hh, valStartU c J.toUSize hh (i.toUSize + 4) = (valStart c J (by omega) (i + 4)).toUSize := fun hh => by
+      rw [tu_add4 i (by omega)]; exact valStartU_eq c hw J (i + 4) (by omega) (by omega) hh
+    simp only [c1, c2, h2, h3, h4, g, gJ, dl, vsU, and_self, ↓reduceDIte, ↓reduceIte, hdl, cs_U c _ J hvs (by omega)]
+    rw [tu_add1 J (by omega)]
+    exact ih (by omega)
+  | case4 i bom skipLF line data hasData type idBuf lastId retry outBuf outN h hb h4 hnd k hk h2 h3 hdl vs hkj hbk ih =>
+    fu_pre
+    have c1 : i.toUSize < J.toUSize := (tu_lt (by omega) (by omega)).mpr h2
+    have c2 : J.toUSize < c.usize := (tu_lt (by omega) (by omega)).mpr h3.2
+    have gJ := tu_g c (by omega) J.toUSize J rfl h3.2
+    have gi := tu_g c (by omega) i.toUSize i rfl h
+    obtain ⟨hdl1, hdl2⟩ := dataLine_lt c i J hdl
+    have dl : ∀ hh, dataLineU c hw i.toUSize J.toUSize hh = true := fun hh => by rw [dataLineU_eq c hw i J h (by omega) hh]; exact hdl
+    have hvs := valStart_le c J (by omega) (i + 4)
+    have vsU : ∀ hh, valStartU c J.toUSize hh (i.toUSize + 4) = (valStart c J (by omega) (i + 4)).toUSize := fun hh => by
+      rw [tu_add4 i (by omega)]; exact valStartU_eq c hw J (i + 4) (by omega) (by omega) hh
+    have bU : ∀ hh, blankAfterU c hw J.toUSize hh = k.toUSize := fun hh => by rw [blankAfterU_eq c hw J h3.2 hh, hbk]
+    have c3 : k.toUSize < c.usize := (tu_lt (by omega) (by omega)).mpr hk
+    have gk := tu_g c (by omega) k.toUSize k rfl hk
+    have hnd' : ¬ hasData = true := hnd
+    have bv : ∀ hh, (blankAfter c J hh).val = k := fun hh => by rw [hbk]
+    simp (disch := omega) only [c1, c2, h2, h3, h4, g, gJ, dl, vsU, bU, bv, c3, hk, gk, hnd', and_self, ↓reduceDIte, ↓reduceIte, Bool.false_eq_true, hdl, packEventTSU_eq]
+    rw [tu_add1 k (by omega)]
+    exact ih (by omega)
+  | case5 i bom skipLF line data hasData type idBuf lastId retry outBuf outN h hb h4 hnd k hk h2 h3 hdl vs hkj hbk ih =>
+    fu_pre
+    have c1 : i.toUSize < J.toUSize := (tu_lt (by omega) (by omega)).mpr h2
+    have c2 : J.toUSize < c.usize := (tu_lt (by omega) (by omega)).mpr h3.2
+    have gJ := tu_g c (by omega) J.toUSize J rfl h3.2
+    have gi := tu_g c (by omega) i.toUSize i rfl h
+    obtain ⟨hdl1, hdl2⟩ := dataLine_lt c i J hdl
+    have dl : ∀ hh, dataLineU c hw i.toUSize J.toUSize hh = true := fun hh => by rw [dataLineU_eq c hw i J h (by omega) hh]; exact hdl
+    have hvs := valStart_le c J (by omega) (i + 4)
+    have vsU : ∀ hh, valStartU c J.toUSize hh (i.toUSize + 4) = (valStart c J (by omega) (i + 4)).toUSize := fun hh => by
+      rw [tu_add4 i (by omega)]; exact valStartU_eq c hw J (i + 4) (by omega) (by omega) hh
+    have bU : ∀ hh, blankAfterU c hw J.toUSize hh = k.toUSize := fun hh => by rw [blankAfterU_eq c hw J h3.2 hh, hbk]
+    have bv : ∀ hh, (blankAfter c J hh).val = k := fun hh => by rw [hbk]
+    have hkle : k ≤ c.size := by have := blankAfter_le c J h3.2; rw [hbk] at this; exact this
+    have hk' : ¬ k.toUSize < c.usize := fun e => hk ((tu_lt (by omega) (by omega)).mp e)
+    have hnd' : ¬ hasData = true := hnd
+    simp (disch := omega) only [c1, c2, h2, h3, h4, g, gJ, dl, vsU, bU, bv, hk', hk, hnd', and_self, ↓reduceDIte, ↓reduceIte, Bool.false_eq_true, hdl, ex_U c _ J hvs]
+    rw [tu_add1 J (by omega)]
+    exact ih (by omega)
+  | case6 i bom skipLF line data type idBuf lastId retry outBuf outN h hb h4 h2 h3 hnd k vs hD ih =>
+    fu_pre
+    have hdl := hnd
+    have c1 : i.toUSize < J.toUSize := (tu_lt (by omega) (by omega)).mpr h2
+    have c2 : J.toUSize < c.usize := (tu_lt (by omega) (by omega)).mpr h3.2
+    have gJ := tu_g c (by omega) J.toUSize J rfl h3.2
+    have gi := tu_g c (by omega) i.toUSize i rfl h
+    have dl : ∀ hh, dataLineU c hw i.toUSize J.toUSize hh = false := fun hh => by
+      rw [dataLineU_eq c hw i J h (by omega) hh]; simpa using hdl
+    have hk0 := colonFrom_bounds c J (by omega) i (by omega)
+    have hvs := valStart_le c J (by omega) (colonFrom c J (by omega) i)
+    simp (disch := omega) only [c1, c2, h2, h3, h4, g, gJ, dl, and_self, ↓reduceDIte, ↓reduceIte, Bool.false_eq_true, tu_toNat, hdl, hD, cs_U c _ J hvs]
+    rw [tu_add1 J (by omega)]
+    exact ih (by omega)
+  | case7 i bom skipLF line data hasData type idBuf lastId retry outBuf outN h hb h4 hnd h2 h3 hdl k vs hD ih =>
+    fu_pre
+    have c1 : i.toUSize < J.toUSize := (tu_lt (by omega) (by omega)).mpr h2
+    have c2 : J.toUSize < c.usize := (tu_lt (by omega) (by omega)).mpr h3.2
+    have gJ := tu_g c (by omega) J.toUSize J rfl h3.2
+    have gi := tu_g c (by omega) i.toUSize i rfl h
+    have dl : ∀ hh, dataLineU c hw i.toUSize J.toUSize hh = false := fun hh => by
+      rw [dataLineU_eq c hw i J h (by omega) hh]; simpa using hdl
+    have hk0 := colonFrom_bounds c J (by omega) i (by omega)
+    have hvs := valStart_le c J (by omega) (colonFrom c J (by omega) i)
+    have hnd' : ¬ hasData = true := hnd
+    simp (disch := omega) only [c1, c2, h2, h3, h4, g, gJ, dl, and_self, ↓reduceDIte, ↓reduceIte, Bool.false_eq_true, tu_toNat, hdl, hD, hnd', ex_U c _ J hvs]
+    rw [tu_add1 J (by omega)]
+    exact ih (by omega)
+  | case8 i bom skipLF line data hasData type idBuf lastId retry outBuf outN h hb h4 h2 h3 hdl k vs hD p ih =>
+    fu_pre
+    have c1 : i.toUSize < J.toUSize := (tu_lt (by omega) (by omega)).mpr h2
+    have c2 : J.toUSize < c.usize := (tu_lt (by omega) (by omega)).mpr h3.2
+    have gJ := tu_g c (by omega) J.toUSize J rfl h3.2
+    have gi := tu_g c (by omega) i.toUSize i rfl h
+    have dl : ∀ hh, dataLineU c hw i.toUSize J.toUSize hh = false := fun hh => by
+      rw [dataLineU_eq c hw i J h (by omega) hh]; simpa using hdl
+    have hk0 := colonFrom_bounds c J (by omega) i (by omega)
+    have hvs := valStart_le c J (by omega) (colonFrom c J (by omega) i)
+    simp (disch := omega) only [c1, c2, h2, h3, h4, g, gJ, dl, and_self, ↓reduceDIte, ↓reduceIte, Bool.false_eq_true, tu_toNat, hdl, hD]
+    rw [tu_add1 J (by omega)]
+    exact ih (by omega)
+  | case9 i bom skipLF line data hasData type idBuf lastId retry outBuf outN h hb h2 h3 ih =>
+    fu_pre
+    have c1 : i.toUSize < J.toUSize := (tu_lt (by omega) (by omega)).mpr h2
+    have h3' : ¬ (line.size = 0 ∧ J.toUSize < c.usize) := fun hh => h3 ⟨hh.1, (tu_lt (by omega) (by omega)).mp hh.2⟩
+    have hv : i ≤ J := by omega
+    simp (disch := omega) only [c1, h2, h3, h3', ↓reduceDIte, ↓reduceIte, cs_U c _ J hv]
+    exact ih (by omega)
+  | case10 i bom skipLF line data hasData type idBuf lastId retry outBuf outN h hb hsk h2 ih =>
+    fu_pre
+    have c1 : ¬ i.toUSize < J.toUSize := fun e => h2 ((tu_lt (by omega) (by omega)).mp e)
+    have gi := tu_g c (by omega) i.toUSize i rfl h
+    simp (disch := omega) only [c1, h2, hsk, gi, ↓reduceDIte, ↓reduceIte, Bool.false_eq_true]
+    rw [tu_add1 i (by omega)]
+    exact ih (by omega)
+  | case11 i bom skipLF line data type idBuf lastId retry outBuf outN h hb hsk hl h2 ih =>
+    fu_pre
+    have c1 : ¬ i.toUSize < J.toUSize := fun e => h2 ((tu_lt (by omega) (by omega)).mp e)
+    have gi := tu_g c (by omega) i.toUSize i rfl h
+    simp (disch := omega) only [c1, h2, hsk, hl, gi, ↓reduceDIte, ↓reduceIte, Bool.false_eq_true]
+    rw [tu_add1 i (by omega)]
+    exact ih (by omega)
+  | case12 i bom skipLF line data hasData type idBuf lastId retry outBuf outN h hb hsk hl hnd h2 ih =>
+    fu_pre
+    have c1 : ¬ i.toUSize < J.toUSize := fun e => h2 ((tu_lt (by omega) (by omega)).mp e)
+    have gi := tu_g c (by omega) i.toUSize i rfl h
+    have hnd' : ¬ hasData = true := hnd
+    simp (disch := omega) only [c1, h2, hsk, hl, gi, hnd', ↓reduceDIte, ↓reduceIte, Bool.false_eq_true]
+    rw [tu_add1 i (by omega)]
+    exact ih (by omega)
+  | case13 i bom skipLF line data hasData type idBuf lastId retry outBuf outN h hb hsk hl t h2 ih =>
+    fu_pre
+    have c1 : ¬ i.toUSize < J.toUSize := fun e => h2 ((tu_lt (by omega) (by omega)).mp e)
+    have gi := tu_g c (by omega) i.toUSize i rfl h
+    simp (disch := omega) only [c1, h2, hsk, hl, gi, ↓reduceDIte, ↓reduceIte, Bool.false_eq_true]
+    rw [tu_add1 i (by omega)]
+    exact ih (by omega)
+
+
 theorem feedF_eq (s : FSt) (c : ByteArray) : feedF s c = feedBulk c 0 s := by
   unfold feedF
   split
   · obtain ⟨bom, skipLF, line, ⟨data, hasData, type, idBuf, lastId, retry⟩, outBuf, outN⟩ := s
-    exact feedFast_eq c 0 bom skipLF line data hasData type idBuf lastId retry outBuf outN
+    by_cases hw0 : (c.size + 8).toUSize.toNat = c.size + 8
+    · have hw : c.size + 8 < USize.size := by have := USize.toNat_lt_size (c.size + 8).toUSize; omega
+      simp only [hw0, ↓reduceDIte]
+      have e := feedFastU_eq c hw 0 (Nat.zero_le _) bom skipLF line data hasData type idBuf lastId retry outBuf outN
+      exact e.trans (feedFast_eq c 0 bom skipLF line data hasData type idBuf lastId retry outBuf outN)
+    · simp only [hw0, ↓reduceDIte]
+      exact feedFast_eq c 0 bom skipLF line data hasData type idBuf lastId retry outBuf outN
   · split
     · exact (feedBulk_eq c 0 s).symm
     · rfl
