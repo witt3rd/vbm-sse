@@ -28,6 +28,6 @@ files() { git ls-files --cached --others --exclude-standard "$@"; }   # a file n
   # tools run as processes: a fixed watch-list found in scripts/ and the build file
   [ -f scripts/trust_ledger.py ] && echo tool:python3 || true   # the checker itself (excluded from the grep below: it names every watch-listed tool)
   for t in git gh mise wt flock lake leanc leanchecker nanoda node cargo; do
-    files scripts .land lakefile.lean | grep -v -e 'scripts/trust' | xargs grep -lw -- "$t" >/dev/null 2>&1 && echo "tool:$t" || true; done
+    files scripts lakefile.lean | grep -v -e 'scripts/trust' | xargs grep -lw -- "$t" >/dev/null 2>&1 && echo "tool:$t" || true; done
 } | sort -u > "$req"
 python3 scripts/trust_ledger.py "$ledger" "$req"

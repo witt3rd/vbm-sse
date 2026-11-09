@@ -64,14 +64,14 @@ Entry format: **What** it is; **Enters** where it enters; **Assumes** what we as
 - **Plan:** sandbox. Pin the release checksum in `mise.toml` (a lockfile) once the CI exists; until then the tarball's integrity is GitHub's.
 - **Covers:** `tool:mise`
 
-### T07. git, gh, flock, python3, cargo and the vendored lander: the process tooling
-- **What:** `git` and `gh` (the red-check and the rebase and push steps of `.land/land-direct`), `flock` (the lander's mutex), `python3` (the trust-ledger checker, the scrub gate, the workflow lint). The lander is a pinned copy of vbm-land (`.land/tool/`), which names `cargo` only in an example configuration it ships. They run on the developer's machine and in CI; none is part of any artifact.
-- **Enters:** `.land/land-direct`, `.land/tool/`, `scripts/trust_ledger.py`, `scripts/scrub.py`, `scripts/trust-ledger-check.sh`, the Tier 1 scripts.
+### T07. git, gh, python3 and cargo: the process tooling
+- **What:** `git` (the hermetic clone and the pin's fetch of `scripts/git-hermetic.sh`, `scripts/pinned-lib.py`, `scripts/scrub.py`), `gh` (`scripts/scrub.py`), `python3` (the trust-ledger checker, the scrub gate, the workflow lint) and `cargo` (`scripts/test_bindings.sh` runs the Rust binding's tests). They run on the developer's machine and in CI; none is part of any artifact.
+- **Enters:** `scripts/trust_ledger.py`, `scripts/scrub.py`, `scripts/git-hermetic.sh`, `scripts/pinned-lib.py`, `scripts/test_bindings.sh`, `scripts/trust-ledger-check.sh`, the Tier 1 scripts.
 - **Assumes:** they do what their manuals say; the self-tests of the scripts that use them (scratch repositories, a `gh` shim) are the check that our use of them is right; no written contract.
-- **Test:** none that can fail inside this repository: the lander is the vendored, pinned vbm-land (its own tests live there; .land/tool/bin/land-check verifies the copy is intact).
+- **Test:** none that can fail inside this repository: `scripts/tier1.sh` runs each of them and fails when one does not do its job (a stale pin, a scrub hit, a binding test that fails), which is the check on our use of them.
 - **Owner:** upstream tools; the owner approves the scripts (protected set).
 - **Plan:** accept, because they touch the process and not the artifact: a compromised tool could land a bad change, which the gates and the owner's review of protected paths are there to catch.
-- **Covers:** `tool:git` `tool:gh` `tool:python3` `tool:cargo` `tool:wt`
+- **Covers:** `tool:git` `tool:gh` `tool:python3` `tool:cargo`
 
 ## The C interface, the runtime and the bindings
 
