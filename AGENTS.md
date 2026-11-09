@@ -1,9 +1,9 @@
 ## Landing (direct to main, no PRs)
 - Work in a worktree off a fresh origin/main. Diff ≤150 production lines, ≤45 min without a passing build; over either, stop and write a decomposition plan.
-- Commit locally with Conventional Commits. Land only with `scripts/land-direct`; never push main yourself, never force-push it, never open a PR.
+- Commit locally with Conventional Commits. Land only with `.land/land-direct`; never push main yourself, never force-push it, never open a PR.
 - New behaviour lands behind a flag that defaults OFF. Interface changes: add beside the old, migrate callers, delete at zero references.
 - Everything runs before the push, once (Tier 1 on the rebased tree); nothing runs after it. If main is ever red, whoever sees it reverts the offending commit with `git revert` and lands the revert; the author fixes forward in a new worktree. A landing must not add a failure.
-- `scripts/land/` and `scripts/land-direct` are a pinned copy of vbm-land: never edit them (`scripts/land/bin/land-check` fails the gate). Change the tool upstream, then `scripts/land/bin/land-update <tag>`.
+- `.land/tool/` and `.land/land-direct` are a pinned copy of vbm-land: never edit them (`.land/tool/bin/land-check` fails the gate). Change the tool upstream, then `.land/tool/bin/land-update <tag>`.
 - Decide anything reversible and log it. Escalate only money, data loss, secrets, publishing, or harm to a third party; say so in one line and stop.
 
 ## Principles (the VBM + HVTBD family)
@@ -26,7 +26,7 @@ Landed: the specification (`LeanSse/Spec.lean`: the algorithm over `List UInt8`)
 - **The specified share is reported on every Tier 1 run** (`scripts/ClosureGate.lean`); the aim is that it only rises and the unverified set only shrinks, and nothing from `Std`, `Lean` or `LeanSseProofs` is reachable from an export.
 - **The boundary never decides.** C, loaders and bindings move bytes; what an event is, is decided in Lean only.
 - **Public-ready, always:** no internal project, host or person name, no machine path, no secret, in any file or commit message (the scrub gate, `scripts/scrub.py`, checks the tree; its banned list is hashes). No paid model calls from a test or a gate.
-- **Land with `scripts/land-direct`, never open a PR, never push a branch.** One lander at a time. Do not weaken a check to make it pass.
+- **Land with `.land/land-direct`, never open a PR, never push a branch.** One lander at a time. Do not weaken a check to make it pass.
 - Conventional Commits `type(scope): summary`. Heavy builds on a shared machine run under a memory cap, one at a time.
 
 ## Library rules
@@ -42,4 +42,4 @@ Landed: the specification (`LeanSse/Spec.lean`: the algorithm over `List UInt8`)
 - **Tier 1** (`scripts/tier1.sh`): the forbidden-constructs scan, the `Init`-only import scan, the pinned library check, a zero-warning build of both libraries, the axiom gate, the trust ledger (a new boundary needs an entry), the scrub gate, and the real tests (vectors, ABI, native, WebAssembly, bindings). The specified share and closure counts are printed, never gated. Nothing else refuses a landing.
 
 ## Layout
-`LeanSse/` spec and code (`Init` and the pinned `VbmSimd` only) · `LeanSseProofs/` proofs (never linked) · `scripts/` gates and process · `scripts/land/` the pinned lander (never edit) · `docs/` spec, decisions, trust ledger, proof ledger (generated), clause index, standard pin · `vectors/` the generator's `Main` · `bench/` the throughput bench · `abi/` `include/` `runtime/` the C interface and the freestanding runtime · `bindings/` generated bindings · `tests/` the C, WebAssembly and binding tests.
+`LeanSse/` spec and code (`Init` and the pinned `VbmSimd` only) · `LeanSseProofs/` proofs (never linked) · `scripts/` gates and process · `.land/tool/` the pinned lander (never edit) · `docs/` spec, decisions, trust ledger, proof ledger (generated), clause index, standard pin · `vectors/` the generator's `Main` · `bench/` the throughput bench · `abi/` `include/` `runtime/` the C interface and the freestanding runtime · `bindings/` generated bindings · `tests/` the C, WebAssembly and binding tests.

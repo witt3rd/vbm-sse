@@ -14,7 +14,7 @@ PATHS = [re.compile(p) for p in (r"/ho" + "me/[A-Za-z0-9_.-]+", r"/Us" + "ers/[A
 SECRETS = [re.compile(p) for p in (r"gh[pousr]_[A-Za-z0-9]{20,}", r"github_pat_[A-Za-z0-9_]{20,}", r"\bsk-[A-Za-z0-9]{20,}", r"\bAKIA[0-9A-Z]{16}\b", r"\bxox[baprs]-[A-Za-z0-9-]{10,}",
                                        r"AIza[0-9A-Za-z_-]{30,}", r"-----BEGIN [A-Z ]*PRIVATE KEY-----")]
 TOKEN = re.compile(r"[A-Za-z0-9]+")
-SKIP_DIRS = ("scripts/land/", ".agents/skills/")   # the pinned copy of the landing tool: its own repository is public and drift-checked (scripts/land/bin/land-check)
+SKIP_DIRS = (".land/tool/", ".agents/skills/")   # the pinned copy of the landing tool: its own repository is public and drift-checked (.land/tool/bin/land-check)
 
 def banned(path):
     out = set()

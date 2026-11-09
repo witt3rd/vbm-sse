@@ -11,7 +11,7 @@ The set of things that must appear here is **derived from the tree, not from thi
 - A `Covers` key that names nothing real fails (a stale or invented cover), and **removing any entry fails** (the gate does this to itself on every run, one entry at a time: an entry that covers nothing required is padding). Dangling file references fail. An entry needs all seven fields, a **Plan** from `verify | replace | sandbox | accept`, and `accept` needs `because ...`. **Assumes** must link a written contract or say `no written contract` (counted as a gap); **Test** must name a test that can fail or say `none` (counted as a gap).
 - Not covered by the gate (say so rather than pretend): a tool called from a script that is not on the watch-list in `scripts/trust-ledger-check.sh`, and the *quality* of an entry's prose.
 
-The count printed on every run and in the Tier 1 log `scripts/land-direct` keeps: `trust ledger: N entries (... gaps)`.
+The count printed on every run and in the Tier 1 log `.land/land-direct` keeps: `trust ledger: N entries (... gaps)`.
 
 Entry format: **What** it is; **Enters** where it enters; **Assumes** what we assume of it (the contract); **Test** the test that can fail; **Owner**; **Plan**.
 
@@ -65,10 +65,10 @@ Entry format: **What** it is; **Enters** where it enters; **Assumes** what we as
 - **Covers:** `tool:mise`
 
 ### T07. git, gh, flock, python3, cargo and the vendored lander: the process tooling
-- **What:** `git` and `gh` (the red-check and the rebase and push steps of `scripts/land-direct`), `flock` (the lander's mutex), `python3` (the trust-ledger checker, the scrub gate, the workflow lint). The lander is a pinned copy of vbm-land (`scripts/land/`), which names `cargo` only in an example configuration it ships. They run on the developer's machine and in CI; none is part of any artifact.
-- **Enters:** `scripts/land-direct`, `scripts/land/`, `scripts/trust_ledger.py`, `scripts/scrub.py`, `scripts/trust-ledger-check.sh`, the Tier 1 scripts.
+- **What:** `git` and `gh` (the red-check and the rebase and push steps of `.land/land-direct`), `flock` (the lander's mutex), `python3` (the trust-ledger checker, the scrub gate, the workflow lint). The lander is a pinned copy of vbm-land (`.land/tool/`), which names `cargo` only in an example configuration it ships. They run on the developer's machine and in CI; none is part of any artifact.
+- **Enters:** `.land/land-direct`, `.land/tool/`, `scripts/trust_ledger.py`, `scripts/scrub.py`, `scripts/trust-ledger-check.sh`, the Tier 1 scripts.
 - **Assumes:** they do what their manuals say; the self-tests of the scripts that use them (scratch repositories, a `gh` shim) are the check that our use of them is right; no written contract.
-- **Test:** none that can fail inside this repository: the lander is the vendored, pinned vbm-land (its own tests live there; scripts/land/bin/land-check verifies the copy is intact).
+- **Test:** none that can fail inside this repository: the lander is the vendored, pinned vbm-land (its own tests live there; .land/tool/bin/land-check verifies the copy is intact).
 - **Owner:** upstream tools; the owner approves the scripts (protected set).
 - **Plan:** accept, because they touch the process and not the artifact: a compromised tool could land a bad change, which the gates and the owner's review of protected paths are there to catch.
 - **Covers:** `tool:git` `tool:gh` `tool:python3` `tool:cargo` `tool:wt`

@@ -2,7 +2,7 @@
 # Tier 1: the trust ledger (docs/trust-ledger.md) names everything outside our direct control that vbm-sse executes or depends on. The REQUIRED set is derived
 # from the tree, not from the ledger: every @[extern] symbol in the sources, every C file under runtime/ and abi/, every hand-written binding loader, every CI workflow,
 # the build pins, the Lean compiler/runtime/clang pieces the pin brings, the closure modules that are neither spec nor toolchain (scripts/ClosureGate.lean --emit),
-# and the tools scripts/ call. A new boundary with no entry FAILS; an entry covering nothing required FAILS. Prints `trust ledger: N entries ...` (scripts/land-direct
+# and the tools scripts/ call. A new boundary with no entry FAILS; an entry covering nothing required FAILS. Prints `trust ledger: N entries ...` (.land/land-direct
 # quotes it). The checker (scripts/trust_ledger.py) negative-self-tests itself on every run: remove any entry and it must fail.
 # Entries for things not in the tree yet (runtime.c, the ABI edge, binding loaders, HACL*) are written under "Planned" in the ledger, not gated, and become
 # `### Tnn.` entries in the PR that adds the file (then this derivation requires them).
@@ -28,6 +28,6 @@ files() { git ls-files --cached --others --exclude-standard "$@"; }   # a file n
   # tools run as processes: a fixed watch-list found in scripts/ and the build file
   [ -f scripts/trust_ledger.py ] && echo tool:python3 || true   # the checker itself (excluded from the grep below: it names every watch-listed tool)
   for t in git gh mise wt flock lake leanc leanchecker nanoda node cargo; do
-    files scripts lakefile.lean | grep -v -e 'scripts/trust' | xargs grep -lw -- "$t" >/dev/null 2>&1 && echo "tool:$t" || true; done
+    files scripts .land lakefile.lean | grep -v -e 'scripts/trust' | xargs grep -lw -- "$t" >/dev/null 2>&1 && echo "tool:$t" || true; done
 } | sort -u > "$req"
 python3 scripts/trust_ledger.py "$ledger" "$req"

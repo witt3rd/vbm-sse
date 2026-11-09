@@ -49,11 +49,11 @@ timeout_seconds = 900
 comment = "//"
 equivalent = "mutants-equivalent.txt"
 # code mutants (the scorecard's operator swaps, seeded) of the C interface (abi/vbm_sse.c), killed by the subject's C test harness running the GENERATED vectors through the library built from the mutated file. setup builds the Lean libraries and the vectors once;
-# the harness rebuilds the freestanding library with the mutated shim (exit 99: it does not build, so the mutant is not viable) and runs every vector on every cut (non-zero: killed). The probe binary is built in a private mktemp -d and runs under scripts/land/bin/run-probe
+# the harness rebuilds the freestanding library with the mutated shim (exit 99: it does not build, so the mutant is not viable) and runs every vector on every cut (non-zero: killed). The probe binary is built in a private mktemp -d and runs under .land/tool/bin/run-probe
 # (ulimit -c 0 plus the dumpable-clear preload, a private TMPDIR): a crashing mutant leaves no core and no crash record, and no fixed /tmp name; a missing or refusing helper fails the unmutated baseline (not measurable), never a false kill.
 files = ["abi/vbm_sse.c"]
 setup_cmd = 'lake build LeanSse:static vbm-sse-vectors >/dev/null 2>&1 && lake exe vbm-sse-vectors --n 3 --out ./.mutation-vectors.jsonl >/dev/null 2>&1'
-kill_cmd = 'P=scripts/land/bin/run-probe; [ -x "$P" ] || exit 99; d=$(mktemp -d) && trap "rm -rf $d" EXIT; VBM_KEEP=vbm_sse_rt_live scripts/build_native.sh $d/mlib --no-so >/dev/null 2>&1 || exit 99; leanc -isystem /usr/include $(test -d /usr/include/$(uname -m)-linux-gnu && echo -isystem /usr/include/$(uname -m)-linux-gnu) -I include -o $d/abi_t tests/abi_test.c $d/mlib/libvbm_sse.a >/dev/null 2>&1 || exit 99; "$P" $d/abi_t ./.mutation-vectors.jsonl >/dev/null 2>&1'
+kill_cmd = 'P=.land/tool/bin/run-probe; [ -x "$P" ] || exit 99; d=$(mktemp -d) && trap "rm -rf $d" EXIT; VBM_KEEP=vbm_sse_rt_live scripts/build_native.sh $d/mlib --no-so >/dev/null 2>&1 || exit 99; leanc -isystem /usr/include $(test -d /usr/include/$(uname -m)-linux-gnu && echo -isystem /usr/include/$(uname -m)-linux-gnu) -I include -o $d/abi_t tests/abi_test.c $d/mlib/libvbm_sse.a >/dev/null 2>&1 || exit 99; "$P" $d/abi_t ./.mutation-vectors.jsonl >/dev/null 2>&1'
 mutants = 50
 seed = 1
 kill_timeout_seconds = 120

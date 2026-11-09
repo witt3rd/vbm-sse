@@ -35,7 +35,7 @@ The maintainers' own work (mostly done by AI agents in parallel worktrees) lands
 
 You do not need these to contribute; they are described so the repository makes sense.
 
-- **`scripts/land-direct`**: lands the local commits of a worktree on `main`. Under one lock it checks that `main` is not red, rebases the commits onto `origin/main`, runs Tier 1 on exactly that result, and pushes as a plain fast-forward (never forced). The lander itself is a pinned, vendored copy of [vbm-land](https://github.com/witt3rd/vbm-land) (`scripts/land/`, checked by `scripts/land/bin/land-check`: never edit it); this repository's own rules are `scripts/land.conf` and `scripts/land.d/`. Design: `docs/decisions/0002-land-direct.md`.
+- **`.land/land-direct`**: lands the local commits of a worktree on `main`. Under one lock it checks that `main` is not red, rebases the commits onto `origin/main`, runs Tier 1 on exactly that result, and pushes as a plain fast-forward (never forced). The lander itself is a pinned, vendored copy of [vbm-land](https://github.com/witt3rd/vbm-land) (`.land/tool/`, checked by `.land/tool/bin/land-check`: never edit it); this repository's own rules are `.land/land.conf` and `.land/land.d/`. Design: `docs/decisions/0002-land-direct.md`.
 - **Tier 1**: the quick gate described above, run once before every landing; nothing runs after the push. If `main` is ever red, whoever sees it reverts the offending commit with `git revert`, then the fix is made in a new worktree.
 
 ## Licence
