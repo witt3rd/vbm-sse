@@ -11,7 +11,7 @@ cd "$(dirname "$0")/.."
 . scripts/lib-ran.sh   # ran_case / ran_done / must_fail: the self-tests count what they executed and a refused tool is a failure (docs/decisions/0002-ran-evidence.md)
 if ! command -v node >/dev/null 2>&1; then
   if [ -n "${VBM_SSE_REQUIRE_NODE:-}" ]; then echo "test_wasm: node is required here (Tier 2) and was not found" >&2; exit 1; fi
-  echo "test_wasm: SKIPPED: node was not found on PATH (Tier 1 skips, Tier 2 requires it: scripts/tier2.sh)"; exit 0
+  echo "test_wasm: SKIPPED: node was not found on PATH (Tier 1 skips it on a host without it)"; exit 0
 fi
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 # Reaper: each job is its own process group (set -m), and an abort or exit stops the groups of the pids held here (scripts/lib-reap.sh; never by pattern; test_reap.sh).

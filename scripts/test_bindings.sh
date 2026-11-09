@@ -52,7 +52,7 @@ echo "test_bindings: python: corrupted event, last event ID and reconnection tim
 # 4. Rust
 if ! command -v cargo >/dev/null 2>&1; then
   if [ -n "${VBM_SSE_REQUIRE_CARGO:-}" ]; then echo "test_bindings: cargo is required here (Tier 2) and was not found" >&2; exit 1; fi
-  echo "test_bindings: rust SKIPPED: cargo was not found on PATH (Tier 1 skips, Tier 2 requires it: scripts/tier2.sh)"; ran_done test_bindings; echo "test_bindings: ok (python only)"; exit 0
+  echo "test_bindings: rust SKIPPED: cargo was not found on PATH (Tier 1 skips it on a host without it)"; ran_done test_bindings; echo "test_bindings: ok (python only)"; exit 0
 fi
 export CARGO_TARGET_DIR="$tmp/target" CARGO_BUILD_JOBS=2 VBM_SSE_LIB_DIR="$tmp/lib"
 rs() { VBM_SSE_VECTORS="$1" cargo test --quiet --offline --manifest-path "${2:-bindings/rust}/Cargo.toml" -- --nocapture; }
