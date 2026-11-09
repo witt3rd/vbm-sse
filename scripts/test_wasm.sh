@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tier 1 (when `node` is on PATH; Tier 2 REQUIRES it, VBM_SSE_REQUIRE_NODE=1): the freestanding wasm32 build of the reader (scripts/build_wasm.sh: the generated C of LeanSse, the unmodified abi/vbm_sse.c,
+# Tier 1 (when `node` is on PATH; required when VBM_SSE_REQUIRE_NODE=1 is set): the freestanding wasm32 build of the reader (scripts/build_wasm.sh: the generated C of LeanSse, the unmodified abi/vbm_sse.c,
 # runtime/rt.c; clang --target=wasm32 -nostdlib, no libc, no WASI, no imports) against the Lean reference.
 #   Builds the module; generates the shared vectors (vbm-sse-vectors-1) from the REFERENCE; tests/wasm/wasm_test.mjs runs every row on every cut through the module (the events, the last event ID and
 #   the reconnection time equal the row's), the allocator refuses an impossible size, an oversized chunk is ARG, no leak.
@@ -10,7 +10,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 . scripts/lib-ran.sh   # ran_case / ran_done / must_fail: the self-tests count what they executed and a refused tool is a failure (docs/decisions/0002-ran-evidence.md)
 if ! command -v node >/dev/null 2>&1; then
-  if [ -n "${VBM_SSE_REQUIRE_NODE:-}" ]; then echo "test_wasm: node is required here (Tier 2) and was not found" >&2; exit 1; fi
+  if [ -n "${VBM_SSE_REQUIRE_NODE:-}" ]; then echo "test_wasm: node is required here (VBM_SSE_REQUIRE_NODE=1) and was not found" >&2; exit 1; fi
   echo "test_wasm: SKIPPED: node was not found on PATH (Tier 1 skips it on a host without it)"; exit 0
 fi
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
