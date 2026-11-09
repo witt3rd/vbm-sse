@@ -5,3 +5,9 @@
 - Everything runs before the push, once (Tier 1 on the rebased tree); nothing runs after it. If main is ever red, whoever sees it reverts the offending commit with `git revert` and lands the revert; the author fixes forward in a new worktree. A landing must not add a failure.
 - `scripts/land/` and `scripts/land-direct` are a pinned copy of vbm-land: never edit them (`scripts/land/bin/land-check` fails the gate). Change the tool upstream, then `scripts/land/bin/land-update <tag>`.
 - Decide anything reversible and log it. Escalate only money, data loss, secrets, publishing, or harm to a third party; say so in one line and stop.
+
+## Principles (the VBM + HVTBD family)
+- Everything runs before the push, once, on the commit rebased onto main. Nothing runs after the push.
+- Proofs, not tests. A test exists only for what the proofs do not cover (the boundary), never for the development tooling.
+- A failure is a root-cause question, never a reason to add a check, gate, script or document. Nothing is added to the process without deleting something.
+- The worker owns its change: when the lander refuses it, the worker fixes it and lands again until it converges.
