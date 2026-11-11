@@ -7,8 +7,9 @@ signers file `.land/land.signers`, tag signature verification (`lib/source.sh`),
 ## 1. The tree hash (one definition, used everywhere)
 
 The tree hash of a directory is the SHA-256 of a text built like this:
-- every regular file under the directory, EXCEPT anything whose first path component is `.lake` or `.git` (build
-  products and version-control metadata);
+- every regular file under the directory, EXCEPT anything inside a directory named `.lake` or `.git` AT ANY DEPTH
+  (build products and version-control metadata; Lake builds a vendored library, and the libraries vendored inside it,
+  in place);
 - one line per file, `<sha256 of the file> <path relative to the directory>\n`;
 - lines sorted bytewise (C locale), concatenated.
 A symlink or a special file anywhere in the tree is an error. A path containing a newline or a backslash is an error
