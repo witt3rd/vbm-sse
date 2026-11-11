@@ -1,4 +1,0 @@
-# The pinned libraries (docs/decisions/0005-pinned-library.md; scripts/pinned-lib.py defines the format and the hash). PROTECTED: a lock line is gate-defining (judged by the relabel-attack suite) and the closure gate
-# counts a library as specified only while the library on disk matches its line here (the lake manifest's rev, the checkout's HEAD, the spec_hash of its spec files). Never edit a line by hand: pin from a real checkout (scripts/pinned-lib.py hash).
-# NAME REV SPEC_HASH ROOT SPEC_PATHS
-vbm-simd 7bafe1efb64ce15e6bf338f8c4a45a802f31d1d9 7d2f3757ad425ccb36161d9f79d56e7dcc812a3e40ead6ef9006ed31515af8f7 VbmSimd VbmSimd/,VbmSimd.lean,include/,docs/SPEC.md,docs/trust-ledger.md,lakefile.lean,lake-manifest.json,lean-toolchain

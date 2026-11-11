@@ -8,7 +8,7 @@ Walks every definition reachable from the entry points (`scripts/closure-entries
   spec        a `LeanSse` definition (specified; the code IS the specification, one Lean core)
   boundary    an `@[extern]` declaration of ours (a named trust-ledger item)
   toolchain   Lean's `Init` (trusted: docs/trust-ledger.md)
-  pinned      a definition of a PINNED LIBRARY (`scripts/pinned-libs.lock`, docs/decisions/0005-pinned-library.md; today vbm-simd, root `VbmSimd`): counted as SPEC while the library on disk matches its lock
+  pinned      a definition of a PINNED LIBRARY (`.land/pins.lock`, vbm-land docs/pin.md; today vbm-simd, root `VbmSimd`): counted as SPEC while the library on disk matches its lock
               line (the lake manifest's rev, the checkout's HEAD, the spec_hash of its spec files) and every module of its root was built from that very checkout; else UNVERIFIED. Its reached mass is
               printed apart and RATCHETED (`dep_mass` of the baseline may only fall: a new pin or more reached code is a reviewed edit). Its `@[extern]` shims count as boundary.
   carveout    an `@[extern]` declaration named in `scripts/carveouts.txt` (DECISIONS 20 of the scorecard: a documented, protected carve-out: its trust-ledger entry says what it is, why it cannot be proved and how it is checked instead; its files are in the protected set).
@@ -92,7 +92,7 @@ def shareFloor (base : List String) : Option (Nat × Nat) :=
 
 def argOf (args : List String) (k d : String) : String := match args.dropWhile (· != k) with | _ :: v :: _ => v | _ => d
 
-/-! Pinned libraries (docs/decisions/0005-pinned-library.md). `scripts/pinned-lib.py verdict` judges the lock against the lake manifest and the checkout (rev, HEAD, spec_hash). A module root that is in neither
+/-! Pinned libraries (vbm-land docs/pin.md). `land-pin verify` judges the vendored trees against the lock (the tree hash). A module root that is in neither
 `LeanSse` nor the toolchain is "other": its mass counts as SPEC only when its root is a lock line whose verdict is `ok` AND every module of that root was built from that very checkout (an olean from anywhere
 else is a fork: a local library that merely carries the name). Every other case is UNVERIFIED glue: a mismatch, an absent checkout, a library the lock does not name. -/
 structure Pin where
@@ -102,17 +102,26 @@ structure Pin where
   why : String
 deriving Inhabited
 
+/-- The pin facts of the vendored libraries (vbm-land docs/pin.md): the NAMES come from `land-pin list`, the verdict from `land-pin verify` (all-or-nothing: the vendored trees are exactly their lock), and the Lean
+module ROOT of each from `scripts/pin-roots.txt` (`NAME ROOT`, owned by this repository: the lock is language-neutral and does not know it). A locked library with no line there is an error, never a guess. -/
 def pinVerdicts (args : List String) : IO (Std.HashMap String Pin) := do
   let a := argOf args
-  let extra := (if a "--pin-lock" "" != "" then #["--lock", a "--pin-lock" ""] else #[]) ++ (if a "--pin-manifest" "" != "" then #["--manifest", a "--pin-manifest" ""] else #[]) ++
-    (if a "--pin-pkgs" "" != "" then #["--pkgs", a "--pin-pkgs" ""] else #[])
-  let o ← IO.Process.output { cmd := "python3", args := #["scripts/pinned-lib.py", "verdict"] ++ extra }
-  if o.exitCode != 0 then throw (IO.userError s!"closure gate: scripts/pinned-lib.py verdict failed: {o.stderr}")
+  let tool := a "--land-pin" ".land/tool/bin/land-pin"
+  let rootsFile := a "--pin-roots" "scripts/pin-roots.txt"
+  let roots := (← readLines rootsFile).filterMap fun l => match ((l.splitOn "#").headD "").trimAscii.toString.splitOn " " |>.filter (· != "") with
+    | [n, r] => some (n, r)
+    | _ => none
+  let names ← IO.Process.output { cmd := tool, args := #["list"] }
+  if names.exitCode != 0 then throw (IO.userError s!"closure gate: land-pin list failed: {names.stderr}")
+  let v ← IO.Process.output { cmd := tool, args := #["verify"] }
+  let st := if v.exitCode == 0 then "ok" else "bad"
+  let why := (v.stderr.trimAscii.toString).replace "\n" "; "
   let mut m : Std.HashMap String Pin := {}
-  for l in o.stdout.splitOn "\n" do
-    match l.splitOn " " with
-    | r :: st :: dir :: rest => if !l.startsWith "pin " then m := m.insert r { root := r, status := st, dir, why := " ".intercalate rest }
-    | _ => pure ()
+  for n in names.stdout.splitOn "\n" do
+    if n == "" then continue
+    match roots.find? (fun p => p.1 == n) with
+    | some (_, r) => m := m.insert r { root := r, status := st, dir := s!"vendor/{n}", why }
+    | none => throw (IO.userError s!"closure gate: the pinned library {n} has no line in {rootsFile} (NAME and its Lean module root)")
   return m
 
 /-- Is every loaded module of the pin's root an olean under the locked checkout's own build directory? (`none` = yes, else the first offender) -/
@@ -203,7 +212,7 @@ def measureClosure (env : Environment) (args : List String) : IO Measure := do
     let st := if p.status == "ok" && pinBad.contains r then "bad" else p.status
     (r, st, (pinBad.get? r).getD p.why, pinMass.getD r 0, pinClass pins pinBad r)
   let unlocked : Array (String × String × String × Nat × String) := (pinMass.toArray.filter fun (r, _) => !pins.contains r).qsort (fun a b => a.1 < b.1) |>.map fun (r, ms) =>
-    (r, "unlocked", "its root is not a line of scripts/pinned-libs.lock", ms, "UNVERIFIED")
+    (r, "unlocked", "its root is not a locked library (.land/pins.lock, scripts/pin-roots.txt)", ms, "UNVERIFIED")
   let pinned := locked ++ unlocked
   let pinnedMass := pinned.foldl (fun a (_, _, _, ms, cl) => if cl == "spec" then a + ms else a) 0
   return { entries := entries.length, counts, mass, perModule, perModuleMass, uncovered, forbidden, pinnedMass, pinned, carved }
@@ -224,7 +233,7 @@ def report (m : Measure) (args : List String) (baseFile : String) : IO UInt32 :=
   let floor? := shareFloor base
   IO.println "closure gate: DEFINITIONS: executed mass = expression nodes of every definition reachable from the entry points, classes spec+boundary+UNVERIFIED (toolchain and the C runtime excluded); specified share = spec mass / executed mass"
   for (r, st, why, pm, cl) in pinned do
-    IO.println s!"closure gate: pinned library {r}: {st}{if st == "ok" then " (rev and spec_hash match scripts/pinned-libs.lock)" else if st == "absent" then " (in the lock, not adopted)" else s!" ({why})"}; reached mass {pm}, counted as {if pm == 0 then "nothing" else cl}{if pm > 0 && cl != "spec" then " (unverified glue: the ratchets fail)" else ""}"
+    IO.println s!"closure gate: pinned library {r}: {st}{if st == "ok" then " (the vendored tree matches .land/pins.lock)" else if st == "absent" then " (in the lock, not adopted)" else s!" ({why})"}; reached mass {pm}, counted as {if pm == 0 then "nothing" else cl}{if pm > 0 && cl != "spec" then " (unverified glue: the ratchets fail)" else ""}"
   IO.println s!"closure gate: carve-outs: {mass.getD "carveout" 0} nodes ({", ".intercalate (carved.toList.map fun (n, _) => n.toString)}); outside the share, ratcheted by carveout_mass"
   IO.println s!"closure gate: spec {sm} | boundary {mass.getD "boundary" 0} | unverified {mass.getD "UNVERIFIED" 0} | total {em} | deciding: n/a (the deciding-code detector is not yet ported) | specified share {pct sm em} (floor {match floor? with | some (s0, t0) => pct s0 t0 | none => "none"})"
   IO.println s!"  (of the spec mass, {pinnedMass} is a verified pinned library's, the rest is LeanSse's)"

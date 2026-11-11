@@ -7,7 +7,7 @@
 # Run: mise exec -- scripts/test_bindings.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
-. scripts/lib-ran.sh   # ran_case / ran_done / must_fail: the self-tests count what they executed and a refused tool is a failure (docs/decisions/0002-ran-evidence.md)
+. .land/tool/lib/ran.sh   # ran_case / ran_done / must_fail: the self-tests count what they executed and a refused tool is a failure (.land/tool/docs/ran-evidence.md)
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 export PYTHONDONTWRITEBYTECODE=1
 changed() { cmp -s "$1" "$2" && { echo "test_bindings: self-test: the corruption of $3 changed nothing" >&2; exit 1; } || true; }

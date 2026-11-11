@@ -1,6 +1,6 @@
-VbmSimd.findAvx2 | T13 | scripts/pinned-libs.lock
-VbmSimd.hasAvx2 | T13 | scripts/pinned-libs.lock
-VbmSimd.ld64 | T13 | scripts/pinned-libs.lock
-VbmSimd.ctz | T13 | scripts/pinned-libs.lock
-VbmSimd.findNeon | T13 | scripts/pinned-libs.lock
-VbmSimd.hasNeon | T13 | scripts/pinned-libs.lock
+VbmSimd.findAvx2 | T13 | .land/pins.lock
+VbmSimd.hasAvx2 | T13 | .land/pins.lock
+VbmSimd.ld64 | T13 | .land/pins.lock
+VbmSimd.ctz | T13 | .land/pins.lock
+VbmSimd.findNeon | T13 | .land/pins.lock
+VbmSimd.hasNeon | T13 | .land/pins.lock

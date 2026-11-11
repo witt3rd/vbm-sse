@@ -10,14 +10,14 @@
 # Run: mise exec -- scripts/test_native.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
-. scripts/lib-ran.sh   # ran_case / ran_done / must_fail: the self-tests count what they executed and a refused tool is a failure (docs/decisions/0002-ran-evidence.md)
+. .land/tool/lib/ran.sh   # ran_case / ran_done / must_fail: the self-tests count what they executed and a refused tool is a failure (.land/tool/docs/ran-evidence.md)
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
-. scripts/lib-no-crash-record.sh; nocrash_build   # probes and mutants that are meant to crash run under `quiet` (no core, no systemd-coredump record); ulimit -c does not stop the record
+. .land/tool/lib/no-crash-record.sh; nocrash_build   # probes and mutants that are meant to crash run under `quiet` (no core, no systemd-coredump record); ulimit -c does not stop the record
 sysinc_flags() { printf '%s\n' -isystem "$1"; [ ! -d "$1/$(uname -m)-linux-gnu" ] || printf '%s\n' -isystem "$1/$(uname -m)-linux-gnu"; }
 mapfile -t SYSFLAGS < <(sysinc_flags "${VBM_SSE_SYSINCLUDE:-/usr/include}")
 # Independent negative self-tests run concurrently: bgj CMD..., joinj (docs/decisions/0004-tier1-speed.md).
-# Reaper: each job is its own process group (set -m), and an abort or exit stops the groups of the pids held here (scripts/lib-reap.sh; never by pattern; test_reap.sh).
-. scripts/lib-reap.sh
+# Reaper: each job is its own process group (set -m), and an abort or exit stops the groups of the pids held here (.land/tool/lib/reap.sh; never by pattern).
+. .land/tool/lib/reap.sh
 jpids=(); bgj() { set -m; "$@" & jpids+=($!); set +m; }; reapj() { reap_pids "${jpids[@]}"; }; joinj() { local p; for p in "${jpids[@]}"; do wait "$p" || exit 1; done; jpids=(); }
 trap 'reapj; rm -rf "$tmp"' EXIT; trap 'exit 143' INT TERM HUP   # replaces the EXIT trap above: the same cleanup, plus the reaper
 changed() { cmp -s "$1" "$2" && { echo "test_native: self-test: the corruption of $3 changed nothing" >&2; exit 1; } || true; }

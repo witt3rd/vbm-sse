@@ -14,8 +14,7 @@ if [ -n "$bad" ]; then echo "tier1: forbidden construct(s):" >&2; echo "$bad" >&
 bad=$(grep -HnE '^[[:space:]]*((public|meta|private)[[:space:]]+)*(import|prelude)\b' $(find LeanSse -name '*.lean') LeanSse.lean | grep -vE ':[0-9]+:import (LeanSse|VbmSimd)(\.[A-Za-z0-9_]+)*[[:space:]]*$' || true)
 if [ -n "$bad" ]; then echo "tier1: LeanSse may import only LeanSse modules and VbmSimd:" >&2; echo "$bad" >&2; exit 1; fi
 # 1d. The pinned verified library is the locked one.
-scripts/pinned-lib.py fetch
-scripts/pinned-lib.py verify
+.land/tool/bin/land-pin verify
 # 2. Build (warningAsError is set in lakefile.lean), once, for the guards and every test.
 lake build LeanSse LeanSseProofs
 lake build LeanSse:static vbm-sse-vectors   # also once: the tests below each build these targets, and several cold builds in one tree race
@@ -26,5 +25,5 @@ scripts/scrub.py
 # Reported, not gated: the specified share and the closure counts.
 lake env lean --run scripts/ClosureGate.lean || true
 # 4. The real tests, in parallel.
-scripts/run-tests-parallel.sh scripts/test_vectors.sh scripts/test_abi.sh scripts/test_native.sh scripts/test_wasm.sh scripts/test_bindings.sh
+.land/tool/bin/run-tests-parallel scripts/test_vectors.sh scripts/test_abi.sh scripts/test_native.sh scripts/test_wasm.sh scripts/test_bindings.sh
 echo "tier1: ok"

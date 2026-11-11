@@ -8,14 +8,14 @@
 # Run: mise exec -- scripts/test_wasm.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
-. scripts/lib-ran.sh   # ran_case / ran_done / must_fail: the self-tests count what they executed and a refused tool is a failure (docs/decisions/0002-ran-evidence.md)
+. .land/tool/lib/ran.sh   # ran_case / ran_done / must_fail: the self-tests count what they executed and a refused tool is a failure (.land/tool/docs/ran-evidence.md)
 if ! command -v node >/dev/null 2>&1; then
   if [ -n "${VBM_SSE_REQUIRE_NODE:-}" ]; then echo "test_wasm: node is required here (VBM_SSE_REQUIRE_NODE=1) and was not found" >&2; exit 1; fi
   echo "test_wasm: SKIPPED: node was not found on PATH (Tier 1 skips it on a host without it)"; exit 0
 fi
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
-# Reaper: each job is its own process group (set -m), and an abort or exit stops the groups of the pids held here (scripts/lib-reap.sh; never by pattern; test_reap.sh).
-. scripts/lib-reap.sh
+# Reaper: each job is its own process group (set -m), and an abort or exit stops the groups of the pids held here (.land/tool/lib/reap.sh; never by pattern).
+. .land/tool/lib/reap.sh
 jpids=(); bgj() { set -m; "$@" & jpids+=($!); set +m; }; reapj() { reap_pids "${jpids[@]}"; }; joinj() { local p; for p in "${jpids[@]}"; do wait "$p" || exit 1; done; jpids=(); }
 trap 'reapj; rm -rf "$tmp"' EXIT; trap 'exit 143' INT TERM HUP   # replaces the EXIT trap above: the same cleanup, plus the reaper
 changed() { cmp -s "$1" "$2" && { echo "test_wasm: self-test: the corruption of $3 changed nothing" >&2; exit 1; } || true; }

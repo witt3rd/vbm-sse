@@ -5,7 +5,7 @@
 # Run from the repo root as `mise exec -- scripts/test_vectors.sh`. It builds nothing but the generator (tier1.sh has built the libraries).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-. scripts/lib-ran.sh   # ran_case counts each executed check, ran_done prints the evidence line `ran: NAME: N cases` (docs/decisions/0002-ran-evidence.md)
+. .land/tool/lib/ran.sh   # ran_case counts each executed check, ran_done prints the evidence line `ran: NAME: N cases` (.land/tool/docs/ran-evidence.md)
 base=scripts/vectors-baseline.txt; N=3
 fail() { echo "test_vectors: $*" >&2; exit 1; }
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT

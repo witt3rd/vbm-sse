@@ -4,7 +4,7 @@
 # scripts/test_native.sh; the generated bindings are scripts/test_bindings.sh. Run: mise exec -- scripts/test_abi.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
-. scripts/lib-ran.sh   # ran_case / ran_done / must_fail: the self-tests count what they executed and a refused tool is a failure (docs/decisions/0002-ran-evidence.md)
+. .land/tool/lib/ran.sh   # ran_case / ran_done / must_fail: the self-tests count what they executed and a refused tool is a failure (.land/tool/docs/ran-evidence.md)
 python3 scripts/check_abi.py --selftest; ran_case
 ran_done test_abi
 echo "test_abi: ok"

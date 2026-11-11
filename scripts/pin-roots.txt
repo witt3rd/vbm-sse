@@ -1,0 +1,2 @@
+# NAME ROOT: the Lean module root of each library vendored in vendor/ and locked in .land/pins.lock (scripts/ClosureGate.lean reads it; the lock is language-neutral)
+vbm-simd VbmSimd
