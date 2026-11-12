@@ -40,6 +40,7 @@ case $cmd in
     [ -z "$LAND_LEAN_LEDGER_BRIDGES" ] || largs+=(--bridges "$LAND_LEAN_LEDGER_BRIDGES")
     [ -z "$LAND_LEAN_LEDGER_BASELINE" ] || largs+=(--baseline "$LAND_LEAN_LEDGER_BASELINE")
     [ -z "$LAND_LEAN_LEDGER_CLAUSES" ] || largs+=(--clauses "$LAND_LEAN_LEDGER_CLAUSES")
+    [ "$LAND_LEAN_LEDGER_TAGGED" != 1 ] || largs+=(--tagged)
     cd "$root"
     # the gate imports the tool's two modules: build the library (a cached no-op when current), so no repository's own build line has to name it
     lb=$(lake build LandLedger 2>&1) || { printf '%s\n' "$lb" >&2; echo "land-lean: cannot build LandLedger: declare it in the lakefile (docs/lean-gates.md, \`land-lean ledger\`)" >&2; exit 1; }

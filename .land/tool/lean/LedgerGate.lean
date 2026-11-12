@@ -11,7 +11,7 @@ theorem exists and is a theorem, and, as the configuration asks:
   model nothing runs). A claim whose cited theorems are all `no` is shown as partial, not proved. A definition no entry names but run through a
   refinement theorem (the bridges file: `spec-def theorem reached-def`) counts as reached; the theorem must exist and mention both names.
 * RATCHET (a baseline file): proved may only rise; open may only rise by the claims newly written down. `--write` rewrites the baseline.
-* CLAUSES (an index file, one tag per line: the first word): every tag a claim cites must be in the index, and a proved or partial claim must cite one.
+* CLAUSES (an index file, one tag per line: the first word): every tag a claim cites must be in the index; with TAGGED, a proved or partial claim must also cite one.
   With COVERAGE dispositions (the second word of an index line), the clauses of those dispositions that no proved or partial claim tags are listed.
 `--selftest` proves the gate can fail, in this same process. Exit 0 ok, 1 a check failed. -/
 
@@ -30,10 +30,10 @@ def theoremErrors (env : Environment) (o : Obligation) : List String :=
     | some (.thmInfo _) => none
     | _ => some s!"ledger: {o.slug} names {n}, which is not a theorem"
 
-/-- Tags a claim cites that the index does not list, and a covering claim that cites none. -/
-def clauseErrors (tags : List String) (l : List Obligation) : List String :=
+/-- Tags a claim cites that the index does not list, and (when the repository asks for it) a covering claim that cites none. -/
+def clauseErrors (tagged : Bool) (tags : List String) (l : List Obligation) : List String :=
   l.flatMap fun o =>
-    (if isCovering o && o.clauses.isEmpty then [s!"ledger: claim {o.slug} cites no clause (the clause index lists what a claim may cite)"] else []) ++
+    (if tagged && isCovering o && o.clauses.isEmpty then [s!"ledger: claim {o.slug} cites no clause (the clause index lists what a claim may cite)"] else []) ++
     o.clauses.filterMap fun c => if tags.contains c then none else some s!"ledger: claim {o.slug} cites the clause {c}, which the clause index does not list"
 
 /-- The verdict on a baseline: how many ratchets it breaks. -/
@@ -77,7 +77,8 @@ unsafe def run (args : List String) : IO UInt32 := do
   let idx := (← readLines ((arg "--clauses").getD "")).map words
   let haveClauses := (arg "--clauses").isSome
   let tags := idx.filterMap (·.head?)
-  if haveClauses then for e in clauseErrors tags ledger do IO.eprintln e; bad := bad + 1
+  let tagged := args.contains "--tagged"
+  if haveClauses then for e in clauseErrors tagged tags ledger do IO.eprintln e; bad := bad + 1
   let wantDisp := list "--coverage"
   let wanted := idx.filter fun ws => match ws with | t :: d :: _ => wantDisp.contains d && !t.isEmpty | _ => false
   let wantedTags := wanted.filterMap (·.head?)
@@ -148,8 +149,8 @@ unsafe def run (args : List String) : IO UInt32 := do
       ok := ok && (← must "a baseline claiming more proved than exist" (ratchet proved openN total ["proved 9999", "open 0", s!"total {total}"]))
       if openN > 0 then ok := ok && (← must "open rising with no new claim" (ratchet proved openN total ["proved 0", s!"open {openN - 1}", s!"total {total}"]))
     if haveClauses then
-      ok := ok && (← must "a clause tag that is not in the index" (clauseErrors tags [OC "selftest" ["no-such-clause"] (.open_ "x")]))
-      ok := ok && (← must "a proved claim with no clause" (clauseErrors tags [O "selftest" (.proved [`Nat.add_comm])]))
+      ok := ok && (← must "a clause tag that is not in the index" (clauseErrors tagged tags [OC "selftest" ["no-such-clause"] (.open_ "x")]))
+      if tagged then ok := ok && (← must "a proved claim with no clause" (clauseErrors tagged tags [O "selftest" (.proved [`Nat.add_comm])]))
     if !ok then return 1
     IO.println "ledger gate: negative self-tests ok"
   return if bad == 0 then 0 else 1
