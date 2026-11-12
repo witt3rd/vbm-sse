@@ -16,9 +16,7 @@ lean_lib LeanSse where
   moreLeancArgs := #["-include", (__dir__ / "vendor" / "vbm-simd" / "include" / "vbm_simd.h").toString]
 
 /-- The proofs: may import `Std` and `Lean`; NEVER linked (nothing in `LeanSse` may import it, and no executable or export depends on it). -/
-lean_lib LandLedger where   -- the obligation-ledger vocabulary and walk the landing tool ships (`land-lean ledger`)
-  srcDir := ".land/tool/lean"
-  roots := #[`LandLedger, `LandWalk]
+require «land-ledger» from ".land/tool/lean"   -- the landing tool's Lean modules (the ledger vocabulary and the reach walk), a package it ships: required, never declared, so a repository that vendors this one shares a single copy
 
 lean_lib LeanSseProofs where
   globs := #[.andSubmodules `LeanSseProofs]
