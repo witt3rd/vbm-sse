@@ -19,7 +19,7 @@ if [ -n "$bad" ]; then echo "tier1: LeanSse may import only LeanSse modules and 
 lake build LeanSse LeanSseProofs
 lake build LeanSse:static vbm-sse-vectors   # also once: the tests below each build these targets, and several cold builds in one tree race
 # 2a. Only the standard axioms. 2d. A new trusted boundary has a trust-ledger entry. 2e. No secret or internal name in the tree.
-lake env lean --run scripts/AxiomGate.lean
+.land/tool/bin/land-lean axiom
 scripts/trust-ledger-check.sh
 scripts/scrub.py
 # Reported, not gated: the specified share and the closure counts.
