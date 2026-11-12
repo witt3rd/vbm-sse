@@ -16,7 +16,7 @@ if [ -n "$bad" ]; then echo "tier1: LeanSse may import only LeanSse modules and 
 # 1d. The pinned verified library is the locked one.
 .land/tool/bin/land-pin verify
 # 2. Build (warningAsError is set in lakefile.lean), once, for the guards and every test.
-lake build LeanSse LeanSseProofs
+lake build LeanSse LeanSseProofs LandLedger
 lake build LeanSse:static vbm-sse-vectors   # also once: the tests below each build these targets, and several cold builds in one tree race
 # 2a. Only the standard axioms. 2d. A new trusted boundary has a trust-ledger entry. 2e. No secret or internal name in the tree.
 .land/tool/bin/land-lean axiom

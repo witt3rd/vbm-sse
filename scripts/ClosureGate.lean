@@ -1,6 +1,7 @@
 import Lean
 import LeanSse
 import LeanSseProofs
+import LandWalk
 /-! Closure gate (adapted from the closure gate of the project these gates were first built in; docs/decisions/0001-vbm-sse.md): what the library's exports execute, classified.
 
 Walks every definition reachable from the entry points (`scripts/closure-entries.txt`: one constant name per line, the Lean functions the C exports
@@ -30,6 +31,7 @@ NOT PORTED YET (upstream work in the originating gates): the deciding-code detec
   split of the non-spec mass, the `deciding` field printed below as n/a) and its hidden-code fix. Port them when they land.
 Self-tests (`--selftest`, in this one process): the gate can fail, on synthetic measures and baselines, and the classifier and the walk are exercised on the real environment. -/
 open Lean
+open Land.Walk (walk isAux)   -- the reach walk and the skipped kinds are the landing tool's (lean/LandWalk.lean), the same code the obligation ledger uses
 
 /-- The class of a definition by the module it comes from. -/
 def classifyModule (m : Name) : String :=
@@ -44,28 +46,6 @@ def classify (env : Environment) (n : Name) : String :=
   match env.getModuleIdxFor? n with
   | none => "local"
   | some idx => classifyModule env.header.moduleNames[idx.toNat]!
-
-def isAux (env : Environment) (n : Name) : Bool :=
-  isAuxRecursor env n || isNoConfusion env n || (Meta.isMatcherCore env n) ||
-  (match env.find? n with
-   | some (.ctorInfo _) | some (.recInfo _) | some (.inductInfo _) | some (.quotInfo _) | some (.thmInfo _) | some (.axiomInfo _) => true
-   | _ => false) ||
-  (n.isInternal && !(n.toString.endsWith "._unsafe_rec")) || (env.getProjectionFnInfo? n).isSome
-
-partial def walk (env : Environment) (todo : List Name) (seen : NameSet) : NameSet :=
-  match todo with
-  | [] => seen
-  | n :: rest =>
-    if seen.contains n then walk env rest seen else
-    let seen := seen.insert n
-    match env.find? n with
-    | none => walk env rest seen
-    | some ci =>
-      let used : Array Name := (match ci.value? true with | some v => v.getUsedConstants | none => #[])
-      let impl := (match Compiler.getImplementedBy? env n with | some i => [i] | none => []) ++
-        -- a `partial def` is an opaque constant; its body lives in `<name>._unsafe_rec`
-        (if (env.find? (Name.str n "_unsafe_rec")).isSome then [Name.str n "_unsafe_rec"] else [])
-      walk env (used.toList ++ impl ++ rest) seen
 
 def readLines (p : String) : IO (List String) := do
   if !(← System.FilePath.pathExists p) then return []
