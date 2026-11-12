@@ -1,6 +1,6 @@
 # The trust ledger
 
-One file listing **everything outside our direct control that vbm-sse executes or depends on**: code we did not prove, code we did not write, and facilities we assume. It exists because verified by construction is the first priority: the size of the unverified base and the handling of its boundary is the most critical measure. A boundary with no entry here does not land (`scripts/trust-ledger-check.sh`, Tier 1). The pattern is the one of [vbm-json](https://github.com/witt3rd/vbm-json); only the derivation of the required set differs.
+One file listing **everything outside our direct control that vbm-sse executes or depends on**: code we did not prove, code we did not write, and facilities we assume. It exists because verified by construction is the first priority: the size of the unverified base and the handling of its boundary is the most critical measure. A boundary with no entry here does not land (`.land/tool/lean/trust-keys.sh`, Tier 1). The pattern is the one of [vbm-json](https://github.com/witt3rd/vbm-json); only the derivation of the required set differs.
 
 **Snapshot:** the specification, the incremental machine and the array machine are pure Lean over `Init`; there is no `@[extern]`. The three Lean exports the C interface calls (`LeanSse.abiNew`, `abiFeed`, `abiReport`; `scripts/closure-entries.txt`) have a closure of `LeanSse` plus `Init`. The trusted pieces around them are the C interface (T09), the freestanding runtime (T10), the hand-written loaders of the bindings (T11) and the tools of the C, WebAssembly and binding builds (T12), besides the build entries (T01 to T08).
 
@@ -9,7 +9,7 @@ One file listing **everything outside our direct control that vbm-sse executes o
 The set of things that must appear here is **derived from the tree, not from this file**: every `@[extern]` symbol in `LeanSse/`, every file under `runtime/*.c` and `abi/*.c`, every hand-written binding loader, every `.github/workflows/` file, the build pins (`lean-toolchain`, `mise.toml`, `lakefile.lean`), the Lean pin's compiler, runtime and bundled clang/ld.lld (the keys `lean-compiler`, `lean-runtime`, `clang-lld`), every closure module that is neither `LeanSse` nor `Init` (`scripts/ClosureGate.lean --emit`), and a watch-list of tools the scripts run. Each is a key (`file:`, `extern:`, `module:`, `tool:`, plus the three Lean keys) that an entry must name on its **Covers** line.
 - A new boundary (extern, C file, loader, workflow, tool) with no entry **fails**. Moving code between closure classes does not remove it from the required set.
 - A `Covers` key that names nothing real fails (a stale or invented cover), and **removing any entry fails** (the gate does this to itself on every run, one entry at a time: an entry that covers nothing required is padding). Dangling file references fail. An entry needs all seven fields, a **Plan** from `verify | replace | sandbox | accept`, and `accept` needs `because ...`. **Assumes** must link a written contract or say `no written contract` (counted as a gap); **Test** must name a test that can fail or say `none` (counted as a gap).
-- Not covered by the gate (say so rather than pretend): a tool called from a script that is not on the watch-list in `scripts/trust-ledger-check.sh`, and the *quality* of an entry's prose.
+- Not covered by the gate (say so rather than pretend): a tool called from a script that is not on the watch-list in `.land/tool/lean/trust-keys.sh`, and the *quality* of an entry's prose.
 
 The count printed on every run and in the Tier 1 log `.land/land-direct` keeps: `trust ledger: N entries (... gaps)`.
 
@@ -66,7 +66,7 @@ Entry format: **What** it is; **Enters** where it enters; **Assumes** what we as
 
 ### T07. git, gh, python3 and cargo: the process tooling
 - **What:** `git` (the hermetic clone of `scripts/git-hermetic.sh`, `scripts/scrub.py`), `gh` (`scripts/scrub.py`), `python3` (the trust-ledger checker, the scrub gate, the workflow lint) and `cargo` (`scripts/test_bindings.sh` runs the Rust binding's tests). They run on the developer's machine and in CI; none is part of any artifact.
-- **Enters:** `scripts/trust_ledger.py`, `scripts/scrub.py`, `scripts/git-hermetic.sh`, `scripts/test_bindings.sh`, `scripts/trust-ledger-check.sh`, the Tier 1 scripts.
+- **Enters:** `.land/tool/lean/trust_ledger.py`, `scripts/scrub.py`, `scripts/git-hermetic.sh`, `scripts/test_bindings.sh`, `.land/tool/lean/trust-keys.sh`, the Tier 1 scripts.
 - **Assumes:** they do what their manuals say; the self-tests of the scripts that use them (scratch repositories, a `gh` shim) are the check that our use of them is right; no written contract.
 - **Test:** none that can fail inside this repository: `scripts/tier1.sh` runs each of them and fails when one does not do its job (a stale pin, a scrub hit, a binding test that fails), which is the check on our use of them.
 - **Owner:** upstream tools; the owner approves the scripts (protected set).
@@ -118,7 +118,7 @@ Entry format: **What** it is; **Enters** where it enters; **Assumes** what we as
 - **Test:** `land-pin verify` in `scripts/tier1.sh` (an edited, added or deleted file, an unlocked library, or two different copies of one fails it; the tool's own tests are in vbm-land), `scripts/tier1.sh` (the import scan allows `VbmSimd` and flags `VbmSimdProofs`; the closure gate's pin class and ratchets with their negative self-tests), `scripts/test_native.sh` and `scripts/test_wasm.sh` (every vector on every cut through the library built with the search), and the proof `fast_eq_parse` in `LeanSseProofs/Fast.lean`, which now rests on `VbmSimdProofs.findFirstOf_spec`.
 - **Owner:** the owner (the same owner as vbm-simd); the pin changes only in a reviewed commit.
 - **Plan:** verify. The kernel is proved and the shim is tested in its own repository; the part that stays trust is the shim's C and the CPU, listed there.
-- **Covers:** `pin:vbm-simd` `module:VbmSimd.Find` `module:VbmSimd.Shims`
+- **Covers:** `pin:vbm-simd` `dep:vbm-simd/include/vbm_simd.h` `extern:vbm_simd_append` `extern:vbm_simd_classify64` `extern:vbm_simd_ctz` `extern:vbm_simd_find_avx2` `extern:vbm_simd_find_neon` `extern:vbm_simd_has_avx2` `extern:vbm_simd_has_neon` `extern:vbm_simd_inset64` `extern:vbm_simd_ld64` `extern:vbm_simd_st32` `extern:vbm_simd_st64` `module:VbmSimd.Find` `module:VbmSimd.Shims`
 
 ## Planned (not in the tree yet; promoted to a numbered entry, with a derived key, in the landing that adds the file)
 
