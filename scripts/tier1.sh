@@ -21,6 +21,7 @@ lake build LeanSse:static vbm-sse-vectors   # also once: the tests below each bu
 # 2a. Only the standard axioms. 2d. A new trusted boundary has a trust-ledger entry. 2e. No secret or internal name in the tree.
 .land/tool/bin/land-lean axiom
 .land/tool/bin/land-lean trust
+.land/tool/bin/land-lean recheck --selftest   # every proof replayed by Lean's own checker in a fresh process (vbm-land docs/lean-gates.md)
 scripts/scrub.py
 # Reported, not gated: the specified share and the closure counts.
 lake env lean --run scripts/ClosureGate.lean || true
