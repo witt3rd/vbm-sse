@@ -1,4 +1,4 @@
-# Refinement bridges for the ledger's reach rule (scripts/LedgerGate.lean): `spec-def theorem reached-def`.
+# Refinement bridges for the ledger's reach rule (`land-lean ledger`): `spec-def theorem reached-def`.
 # The exports do not name the spec-def (the whole-buffer reference, the list machine) but run the reached-def (the array machine), and the theorem (which must mention both) proves they agree.
 LeanSse.parse LeanSse.fast_eq_parse LeanSse.feedF
 LeanSse.runLines LeanSse.fast_eq_runLines LeanSse.feedF

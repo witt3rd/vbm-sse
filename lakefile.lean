@@ -16,6 +16,10 @@ lean_lib LeanSse where
   moreLeancArgs := #["-include", (__dir__ / "vendor" / "vbm-simd" / "include" / "vbm_simd.h").toString]
 
 /-- The proofs: may import `Std` and `Lean`; NEVER linked (nothing in `LeanSse` may import it, and no executable or export depends on it). -/
+lean_lib LandLedger where   -- the obligation-ledger vocabulary and walk the landing tool ships (`land-lean ledger`)
+  srcDir := ".land/tool/lean"
+  roots := #[`LandLedger, `LandWalk]
+
 lean_lib LeanSseProofs where
   globs := #[.andSubmodules `LeanSseProofs]
 
